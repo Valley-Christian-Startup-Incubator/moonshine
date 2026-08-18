@@ -49,12 +49,23 @@ launchctl unload ~/Library/LaunchAgents/com.distill.{dagu,web}.plist  # disable 
 
 ## Job types
 
-| Type          | Runs                              | Default timeout |
-|---------------|------------------------------------|------------------|
-| `prompt-gen`  | `scripts/prompt_gen.py` (skeleton — customize for your project) | 30 min |
-| `teacher-gen` | `scripts/batch_generate.py` → `mlx_lm.generate` | 4 hr |
-| `finetune`    | `mlx_lm.lora --train`             | 12 hr |
-| `quantize`    | `mlx_lm.convert -q`               | 4 hr |
+| Type          | Runs                              | Default timeout | Retries |
+|---------------|------------------------------------|------------------|---------|
+| `prompt-gen`  | `scripts/prompt_gen.py` (skeleton — customize for your project) | 30 min | 3× / 30s |
+| `teacher-gen` | `scripts/batch_generate.py` → `mlx_lm.generate` | 4 hr | 3× / 60s, resumes from last completion |
+| `finetune`    | `scripts/run_lora.sh` → `mlx_lm.lora --train` | 12 hr | 2× / 60s, resumes from last checkpoint |
+| `quantize`    | `mlx_lm.convert -q`               | 4 hr | 3× / 30s |
+
+Every job's main compute step has a Dagu `retryPolicy`, so a transient
+failure (network blip, brief OOM) doesn't require a student to resubmit —
+Dagu retries automatically and `status.json` only flips to `failed` once
+retries are exhausted. Blind retries would be wasteful for multi-hour jobs,
+so `teacher-gen` and `finetune` are resumable: `batch_generate.py` skips
+completions already written to `output.jsonl`, and `run_lora.sh` resumes
+LoRA training from the latest `*_adapters.safetensors` checkpoint in
+`ADAPTER_DIR` instead of restarting at iteration 0. `prompt-gen` and
+`quantize` are cheap/idempotent enough that a plain from-scratch retry is
+fine.
 
 Workflow definitions live in `dagu/dags/*.yaml`. Each writes
 `~/.distill/results/<job-id>/{log.txt,status.json,output...}`; the web app
@@ -71,6 +82,10 @@ adjustment if you're on a different release:
 - `scripts/batch_generate.py` — targets `mlx_lm.generate()`'s current
   Python API. If `mlx-lm` changes its `temp`/sampler argument shape, this
   is the only file that needs updating.
+- `scripts/run_lora.sh` — assumes `mlx_lm.lora` supports `--resume-adapter-file`
+  and `--save-every`, and that checkpoints are named `<iter>_adapters.safetensors`.
+  Verify these flags against the installed `mlx-lm` version; if they've
+  changed, the script just needs its checkpoint glob and flag names updated.
 
 `DAGU_VERSION` in `setup.sh` is pinned explicitly — bump it deliberately
 rather than tracking `latest`.
