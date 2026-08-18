@@ -116,7 +116,7 @@ sed -e "s/\${DAGU_USER:-admin}/${DAGU_USER}/" \
 
 rsync -a --delete "${SCRIPT_DIR}/dagu/dags/" "${DISTILL_HOME}/dagu/dags/"
 rsync -a "${SCRIPT_DIR}/scripts/" "${DISTILL_HOME}/scripts/"
-chmod +x "${DISTILL_HOME}"/scripts/*.py
+chmod +x "${DISTILL_HOME}"/scripts/*.py "${DISTILL_HOME}"/scripts/*.sh
 
 # ---------------------------------------------------------------------------
 log "Writing environment file"

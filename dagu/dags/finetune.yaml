@@ -15,12 +15,14 @@ params: >
   ITERS=1000
   BATCH_SIZE=4
   LEARNING_RATE=1e-5
+  SAVE_EVERY=100
 
 env:
   - DISTILL_HOME: ${HOME}/.distill
   - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
   - VENV: ${HOME}/.distill-venv
   - ADAPTER_DIR: ${RESULTS_DIR}/${ADAPTER_PATH}
+  - PATH: ${HOME}/.distill-venv/bin:${PATH}
 
 steps:
   - name: prepare
@@ -33,16 +35,16 @@ steps:
 
   - name: lora-train
     command: >
-      ${VENV}/bin/mlx_lm.lora
-      --model "${MODEL_PATH}"
-      --train
-      --data "${INPUT_FILE}"
-      --adapter-path "${ADAPTER_DIR}"
-      --iters ${ITERS}
-      --batch-size ${BATCH_SIZE}
-      --learning-rate ${LEARNING_RATE}
+      bash ${DISTILL_HOME}/scripts/run_lora.sh
+      "${MODEL_PATH}" "${INPUT_FILE}" "${ADAPTER_DIR}"
+      "${ITERS}" "${BATCH_SIZE}" "${LEARNING_RATE}" "${SAVE_EVERY}"
     stdout: ${RESULTS_DIR}/log.txt
     stderr: ${RESULTS_DIR}/log.txt
+    # A retry resumes from the last checkpoint (see run_lora.sh) instead of
+    # restarting a potentially 12-hour training run from iteration 0.
+    retryPolicy:
+      limit: 2
+      intervalSec: 60
 
 handlerOn:
   success:
