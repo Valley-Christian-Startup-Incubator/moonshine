@@ -7,6 +7,12 @@ generates sequentially (mlx-lm doesn't batch-decode across prompts of
 differing length as of this writing), which is fine for the serial,
 single-job-at-a-time model this scheduler assumes.
 
+Resumable by design: teacher-gen.yaml gives this step a Dagu retryPolicy,
+and a retry re-runs this exact command from scratch. Since a run can take
+hours, we skip prompts already present in --output (by row index) and
+append rather than truncate, so a retry after e.g. a transient OOM or
+network blip continues instead of redoing already-generated completions.
+
 Input JSONL row shape:
     {"prompt": "..."}
 
@@ -16,6 +22,7 @@ Output JSONL row shape:
 
 import argparse
 import json
+import os
 import sys
 
 # mlx_lm's generate() signature has shifted across releases (e.g. `temp` vs
@@ -33,15 +40,47 @@ def main() -> None:
     parser.add_argument("--temperature", type=float, default=0.7)
     args = parser.parse_args()
 
-    print(f"Loading model: {args.model}", file=sys.stderr)
-    model, tokenizer = load(args.model)
-
     with open(args.input) as infile:
         rows = [json.loads(line) for line in infile if line.strip()]
 
-    print(f"Generating {len(rows)} completions", file=sys.stderr)
-    with open(args.output, "w") as outfile:
-        for i, row in enumerate(rows):
+    already_done = 0
+    if os.path.exists(args.output):
+        with open(args.output) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    json.loads(line)
+                except json.JSONDecodeError:
+                    # Truncated write from a crash mid-line; stop counting
+                    # here so this row gets regenerated.
+                    break
+                already_done += 1
+    if already_done:
+        # Drop any trailing truncated/partial line before appending.
+        with open(args.output) as f:
+            good_lines = f.readlines()[:already_done]
+        with open(args.output, "w") as f:
+            f.writelines(good_lines)
+    remaining = rows[already_done:]
+
+    if already_done:
+        print(
+            f"Resuming: {already_done}/{len(rows)} completions already on disk, "
+            f"{len(remaining)} remaining",
+            file=sys.stderr,
+        )
+
+    if not remaining:
+        print("Nothing to do, output already complete", file=sys.stderr)
+        return
+
+    print(f"Loading model: {args.model}", file=sys.stderr)
+    model, tokenizer = load(args.model)
+
+    print(f"Generating {len(remaining)} completions", file=sys.stderr)
+    with open(args.output, "a") as outfile:
+        for i, row in enumerate(remaining):
             prompt = row["prompt"]
             if tokenizer.chat_template is not None:
                 messages = [{"role": "user", "content": prompt}]
@@ -61,7 +100,7 @@ def main() -> None:
 
             outfile.write(json.dumps({"prompt": prompt, "completion": completion}) + "\n")
             outfile.flush()
-            print(f"[{i + 1}/{len(rows)}] done", file=sys.stderr)
+            print(f"[{already_done + i + 1}/{len(rows)}] done", file=sys.stderr)
 
 
 if __name__ == "__main__":

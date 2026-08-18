@@ -40,6 +40,12 @@ steps:
       --temperature ${TEMPERATURE}
     stdout: ${RESULTS_DIR}/log.txt
     stderr: ${RESULTS_DIR}/log.txt
+    # batch_generate.py resumes from the last completed row on re-run, so a
+    # retry after a transient failure (OOM, brief network blip during model
+    # download, etc.) doesn't redo hours of already-generated completions.
+    retryPolicy:
+      limit: 3
+      intervalSec: 60
 
 handlerOn:
   success:
