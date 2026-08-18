@@ -8,6 +8,7 @@ export const DAG_NAME_FOR_TYPE: Record<JobType, string> = {
 	'prompt-gen': 'prompt-gen',
 	'teacher-gen': 'teacher-gen',
 	finetune: 'finetune',
+	distill: 'distill',
 	quantize: 'quantize'
 };
 

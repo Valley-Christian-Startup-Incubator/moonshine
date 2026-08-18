@@ -50,8 +50,14 @@ launchctl list | grep com.distill   # check whether the boot services are runnin
 |---------------|-------------------------------------------------|-------------------|
 | `prompt-gen`  | Generates candidate prompts from a config file  | minutes |
 | `teacher-gen` | Runs prompts through a teacher model for completions | up to a few hours |
-| `finetune`    | LoRA fine-tunes a model on your training data   | up to half a day |
+| `finetune`    | Response-based: LoRA fine-tunes a student on the teacher's generated text | up to half a day |
+| `distill`     | Logit-based: LoRA trains a student to match the teacher's output distribution, not just its text | up to half a day |
 | `quantize`    | Shrinks a model for faster local inference      | up to a few hours |
+
+`finetune` and `distill` both consume a `teacher-gen` job's output and
+produce a LoRA adapter — pick whichever matches how your team wants to
+train. `distill` needs the teacher and student to be the same model
+family (shared tokenizer).
 
 Jobs that fail from a transient hiccup (a brief network blip, a memory
 spike) are retried automatically — you usually don't need to do anything.
@@ -61,9 +67,7 @@ diagnosis of what likely went wrong.
 ## What's intentionally not here
 
 No auth beyond the admin password, no email notifications, no CLI client,
-no automatic data retention/cleanup, no logit-based distillation (the
-workflow is response-based: generate teacher completions, then SFT the
-student on them).
+no automatic data retention/cleanup.
 
 ## For contributors
 

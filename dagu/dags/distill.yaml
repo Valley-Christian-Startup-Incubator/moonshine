@@ -1,0 +1,76 @@
+# Logit-based (KL) distillation DAG — alternative to finetune.yaml's
+# response-based SFT. Trains a student LoRA adapter to match the teacher's
+# output *distribution* (not just its generated text) via KL divergence,
+# computed live each training step by running the teacher forward pass
+# alongside the student (storing full-vocab logits for a whole training
+# set up front is impractically large at this scale).
+#
+# INPUT_FILE is teacher-gen.yaml's output.jsonl ({"prompt","completion"}
+# rows) — the same artifact finetune.yaml consumes, just trained on
+# differently. TEACHER_MODEL_PATH and MODEL_PATH (the student) must share
+# a tokenizer/vocabulary — see scripts/distill_train.py's module docstring
+# for why, and its "not run on real hardware yet" warning.
+
+name: distill
+queue: mac-studio
+maxActiveRuns: 1
+timeoutSec: 43200 # 12 hours
+
+params: >
+  JOB_ID=
+  TEAM=
+  INPUT_FILE=
+  TEACHER_MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct
+  MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
+  ADAPTER_PATH=adapters
+  ITERS=1000
+  BATCH_SIZE=4
+  LEARNING_RATE=1e-5
+  SAVE_EVERY=100
+  TEMPERATURE=2.0
+  ALPHA=0.5
+  LORA_RANK=8
+  LORA_LAYERS=16
+
+env:
+  - DISTILL_HOME: ${HOME}/.distill
+  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
+  - VENV: ${HOME}/.distill-venv
+  - ADAPTER_DIR: ${RESULTS_DIR}/${ADAPTER_PATH}
+  - PATH: ${HOME}/.distill-venv/bin:${PATH}
+
+steps:
+  - name: prepare
+    command: mkdir -p ${RESULTS_DIR} ${ADAPTER_DIR}
+
+  - name: mark-running
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status running
+
+  - name: distill-train
+    command: >
+      bash ${DISTILL_HOME}/scripts/run_distill.sh
+      "${TEACHER_MODEL_PATH}" "${MODEL_PATH}" "${INPUT_FILE}" "${ADAPTER_DIR}"
+      "${ITERS}" "${BATCH_SIZE}" "${LEARNING_RATE}" "${SAVE_EVERY}"
+      "${TEMPERATURE}" "${ALPHA}" "${LORA_RANK}" "${LORA_LAYERS}"
+    stdout: ${RESULTS_DIR}/log.txt
+    stderr: ${RESULTS_DIR}/log.txt
+    # A retry resumes from the last checkpoint (see run_distill.sh) instead
+    # of restarting a potentially 12-hour distillation run from iteration 0.
+    retryPolicy:
+      limit: 2
+      intervalSec: 60
+
+handlerOn:
+  success:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status complete
+      --output-path "${ADAPTER_DIR}"
+  failure:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status failed
+      --output-path "${ADAPTER_DIR}"
+      --diagnose

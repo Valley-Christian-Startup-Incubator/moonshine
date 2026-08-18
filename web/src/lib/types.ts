@@ -1,6 +1,6 @@
 export type Team = 'FRC Robotics' | 'WarriorTides' | 'ISS Program' | 'Walleys Student Store';
 
-export type JobType = 'prompt-gen' | 'teacher-gen' | 'finetune' | 'quantize';
+export type JobType = 'prompt-gen' | 'teacher-gen' | 'finetune' | 'distill' | 'quantize';
 
 export type JobStatus = 'queued' | 'running' | 'complete' | 'failed' | 'unknown';
 
@@ -52,8 +52,14 @@ export const JOB_TYPES: { value: JobType; label: string; description: string }[]
 	},
 	{
 		value: 'finetune',
-		label: 'Fine-tune (LoRA)',
-		description: 'LoRA fine-tune a student model on a training JSONL.'
+		label: 'Fine-tune (LoRA, response-based)',
+		description: 'SFT a student on the teacher’s generated text (next-token cross-entropy).'
+	},
+	{
+		value: 'distill',
+		label: 'Distill (LoRA, logit-based)',
+		description:
+			'Train a student to match the teacher’s output distribution via KL divergence, not just its text.'
 	},
 	{
 		value: 'quantize',
@@ -75,6 +81,34 @@ export const JOB_TYPE_FIELDS: Record<JobType, JobTypeFieldDef[]> = {
 		{ name: 'ITERS', label: 'Iterations', type: 'number', default: 1000 },
 		{ name: 'BATCH_SIZE', label: 'Batch size', type: 'number', default: 4 },
 		{ name: 'LEARNING_RATE', label: 'Learning rate', type: 'number', default: 0.00001, step: 0.000001 }
+	],
+	distill: [
+		{
+			name: 'TEACHER_MODEL_PATH',
+			label: 'Teacher model path',
+			type: 'text',
+			default: 'mlx-community/Meta-Llama-3.1-8B-Instruct'
+		},
+		{
+			name: 'MODEL_PATH',
+			label: 'Student (base) model path',
+			type: 'text',
+			default: 'mlx-community/Meta-Llama-3.1-8B-Instruct-4bit'
+		},
+		{ name: 'ADAPTER_PATH', label: 'Adapter output path', type: 'text', default: 'adapters' },
+		{ name: 'ITERS', label: 'Iterations', type: 'number', default: 1000 },
+		{ name: 'BATCH_SIZE', label: 'Batch size', type: 'number', default: 4 },
+		{ name: 'LEARNING_RATE', label: 'Learning rate', type: 'number', default: 0.00001, step: 0.000001 },
+		{ name: 'TEMPERATURE', label: 'Distillation temperature', type: 'number', default: 2.0, step: 0.1 },
+		{
+			name: 'ALPHA',
+			label: 'KL weight (0=pure SFT, 1=pure distillation)',
+			type: 'number',
+			default: 0.5,
+			step: 0.1
+		},
+		{ name: 'LORA_RANK', label: 'LoRA rank', type: 'number', default: 8 },
+		{ name: 'LORA_LAYERS', label: 'LoRA layers (from the end)', type: 'number', default: 16 }
 	],
 	quantize: [
 		{ name: 'MODEL_PATH', label: 'Model path', type: 'text', default: 'mlx-community/Meta-Llama-3.1-8B-Instruct' },

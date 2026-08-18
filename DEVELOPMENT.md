@@ -33,6 +33,7 @@ writes `~/.distill/results/<job-id>/{log.txt,status.json,output...}`.
 | `prompt-gen`  | `scripts/prompt_gen.py` (skeleton — customize for your project) | 30 min | 3× / 30s |
 | `teacher-gen` | `scripts/batch_generate.py` → `mlx_lm.generate` | 4 hr | 3× / 60s, resumes from last completion |
 | `finetune`    | `scripts/run_lora.sh` → `mlx_lm.lora --train` | 12 hr | 2× / 60s, resumes from last checkpoint |
+| `distill`     | `scripts/run_distill.sh` → `scripts/distill_train.py` (custom KL training loop) | 12 hr | 2× / 60s, resumes from last checkpoint |
 | `quantize`    | `mlx_lm.convert -q`               | 4 hr | 3× / 30s |
 
 Every job's main compute step has a Dagu `retryPolicy`, so a transient
@@ -45,6 +46,55 @@ LoRA training from the latest `*_adapters.safetensors` checkpoint in
 `ADAPTER_DIR` instead of restarting at iteration 0. `prompt-gen` and
 `quantize` are cheap/idempotent enough that a plain from-scratch retry is
 fine.
+
+## Response-based vs logit-based training
+
+`finetune` and `distill` both take a `teacher-gen` job's `output.jsonl`
+(`{"prompt","completion"}` rows) and produce a LoRA adapter, but they
+train differently:
+
+- **`finetune`** (response-based) is plain SFT: `mlx_lm.lora --train`
+  does standard next-token cross-entropy against the teacher's generated
+  text. The student only ever sees the teacher's single sampled completion
+  per prompt.
+- **`distill`** (logit-based) trains the student to match the teacher's
+  full output *distribution* at every token position, not just the token
+  it happened to sample. `scripts/distill_train.py` hand-rolls the
+  training loop because `mlx_lm.lora` has no support for a KL-divergence
+  loss against a second model:
+  1. Load both models; the teacher is frozen, only the student's
+     LoRA-injected params (via `mlx_lm.tuner.utils.linear_to_lora_layers`)
+     are trainable.
+  2. Each batch, run a teacher forward pass (no grad) and a student
+     forward pass over the same token ids.
+  3. Loss = `ALPHA * KL(teacher_T ‖ student_T) * T² + (1 - ALPHA) * CE`,
+     computed only over completion-token positions (prompt tokens and
+     padding are masked out). `T` is `TEMPERATURE`; the `T²` factor is the
+     standard Hinton et al. correction so the KL term's gradient doesn't
+     shrink as temperature grows.
+  4. `optim.Adam` updates the student's LoRA params; checkpoints save to
+     `<iter>_adapters.safetensors` in `ADAPTER_DIR` every `SAVE_EVERY`
+     iterations, same convention as `run_lora.sh`, so `run_distill.sh` can
+     resume from the latest one on a Dagu retry.
+
+  We don't precompute/store the teacher's logits — full vocab (~128k
+  floats/token for a Llama-family model) over a whole training set is a
+  lot of disk for little benefit versus just re-running the teacher
+  forward pass each step, which is what mainstream distillation trainers
+  do at this scale.
+
+  **Constraint**: the teacher and student must share a tokenizer/vocabulary
+  (same model family) since logits are compared position-for-position over
+  identical token ids. `distill_train.py` only checks vocab *size* as a
+  sanity check — two same-sized but different vocabularies will silently
+  misalign and train garbage.
+
+  ⚠️ **This has not been run on real hardware.** MLX is Apple-Silicon-only,
+  so it couldn't be tested in the environment it was written in. The
+  training math and control flow follow the standard mlx-examples LoRA
+  pattern, but expect a debugging pass on the actual Mac Studio the first
+  time `distill` runs — see the version-drift entry below for the specific
+  APIs most likely to need adjustment.
 
 ## AI diagnosis on failure
 
@@ -125,6 +175,14 @@ may need adjustment if you're on a different release:
   --output-format text` and `codex exec` are still the right non-interactive
   invocations for the installed CLI versions. Both tools' headless flags
   have changed across releases; this function is the only place to update.
+- `scripts/distill_train.py` — **highest risk in the repo**, not just
+  version drift: it's untested hand-written MLX training code (see above).
+  Specifically likely to need fixing: `linear_to_lora_layers`'s config dict
+  shape (`rank`/`alpha`/`dropout`/`scale` keys — `mlx_lm.tuner` has changed
+  its LoRA config schema across releases), whether `student.unfreeze(keys=[...])`
+  is still how to re-enable grad on injected LoRA params after `freeze()`,
+  and whether `mlx_lm.load()`'s returned model is still callable directly
+  as `model(input_ids) -> logits` for both teacher and student architectures.
 
 `DAGU_VERSION` and `PYTHON_VERSION` in `setup.sh` are pinned explicitly —
 bump them deliberately rather than tracking `latest`.
