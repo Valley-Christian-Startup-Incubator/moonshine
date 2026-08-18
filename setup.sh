@@ -9,8 +9,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
 VENV_DIR="${VENV_DIR:-$HOME/.distill-venv}"
 DAGU_VERSION="${DAGU_VERSION:-1.16.6}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 WEB_PORT="${WEB_PORT:-3000}"
 DAGU_PORT="${DAGU_PORT:-8081}"
+
+# Common install locations for tools that aren't always on the default
+# launchd PATH (Homebrew, uv, npm-global, the diagnostic agent CLIs).
+EXTRA_PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin"
+export PATH="${EXTRA_PATH}:${PATH}"
 
 DAGU_USER="${DAGU_USER:-admin}"
 DAGU_PASSWORD="${DAGU_PASSWORD:-$(openssl rand -hex 8)}"
@@ -57,21 +63,41 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-log "Setting up Python venv at ${VENV_DIR}"
+log "Setting up Python ${PYTHON_VERSION} venv at ${VENV_DIR}"
 # ---------------------------------------------------------------------------
-command -v python3 >/dev/null 2>&1 || die "python3 3.11+ is required."
-
-if [[ ! -d "${VENV_DIR}" ]]; then
-	python3 -m venv "${VENV_DIR}"
+# Prefer uv for this: it can fetch and manage its own Python builds, so we
+# don't depend on whatever python3 (if any) happens to be on the system —
+# and don't need Homebrew's python formula as a prerequisite either.
+if ! command -v uv >/dev/null 2>&1; then
+	log "uv not found, installing it (https://astral.sh/uv)"
+	curl -LsSf https://astral.sh/uv/install.sh | sh \
+		|| warn "Automatic uv install failed; falling back to a system python3 if one is present."
+	export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
 fi
 
 if command -v uv >/dev/null 2>&1; then
-	log "Using uv to install Python packages"
+	log "Using uv to provision Python ${PYTHON_VERSION} and the venv"
+	uv python install "${PYTHON_VERSION}"
+	if [[ ! -d "${VENV_DIR}" ]]; then
+		uv venv "${VENV_DIR}" --python "${PYTHON_VERSION}"
+	fi
 	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm
 	uv pip install --python "${VENV_DIR}/bin/python" mlx-tune \
 		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
 else
-	log "uv not found, falling back to pip"
+	log "uv unavailable, falling back to system python3"
+	command -v python3 >/dev/null 2>&1 || die "Neither uv nor python3 is available. Install uv manually from https://astral.sh/uv and re-run."
+
+	py_version="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+	py_major="${py_version%%.*}"
+	py_minor="${py_version##*.}"
+	if [[ "${py_major}" -lt 3 || ("${py_major}" -eq 3 && "${py_minor}" -lt 11) ]]; then
+		die "python3 3.11+ required (found ${py_version}) and uv could not be installed automatically. Install uv from https://astral.sh/uv and re-run."
+	fi
+
+	if [[ ! -d "${VENV_DIR}" ]]; then
+		python3 -m venv "${VENV_DIR}"
+	fi
 	"${VENV_DIR}/bin/pip" install --upgrade pip
 	"${VENV_DIR}/bin/pip" install mlx-lm
 	"${VENV_DIR}/bin/pip" install mlx-tune \
@@ -130,6 +156,7 @@ DAGU_PASSWORD=${DAGU_PASSWORD}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 PORT=${WEB_PORT}
 BODY_SIZE_LIMIT=Infinity
+DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT:-}
 EOF
 chmod 600 "${ENV_FILE}"
 
@@ -167,6 +194,13 @@ cat > "${DAGU_PLIST}" <<EOF
 	<dict>
 		<key>DAGU_USER</key><string>${DAGU_USER}</string>
 		<key>DAGU_PASSWORD</key><string>${DAGU_PASSWORD}</string>
+		<!-- launchd's default PATH is just /usr/bin:/bin:/usr/sbin:/sbin, which
+		     misses Homebrew/uv/npm-global. Dagu's steps use absolute paths for
+		     the venv and dagu itself, but the failure-handler diagnosis step
+		     shells out to `claude`/`codex` by name, so PATH needs to include
+		     wherever those CLIs are installed. -->
+		<key>PATH</key><string>${EXTRA_PATH}:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT:-}</string>
 	</dict>
 </dict>
 </plist>

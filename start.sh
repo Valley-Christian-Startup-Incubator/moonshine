@@ -7,7 +7,12 @@
 set -euo pipefail
 
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
+set -a # export everything sourced below, so `dagu start-all` (spawned
+       # plainly, not with inline VAR=val prefixes) inherits it too —
+       # notably DIAGNOSTIC_AGENT and DAGU_USER/PASSWORD for config.yaml.
 source "${DISTILL_HOME}/env"
+set +a
+export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin:${PATH}"
 
 PID_DIR="${DISTILL_HOME}/logs"
 mkdir -p "${PID_DIR}"
