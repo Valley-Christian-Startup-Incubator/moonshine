@@ -8,7 +8,11 @@ record job lifecycle state that the SvelteKit app reads directly from disk.
 import argparse
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime, timezone
+
+DIAGNOSE_TIMEOUT_SEC = 150  # generous over diagnose_job.py's own internal timeout
 
 
 def now_iso() -> str:
@@ -21,6 +25,11 @@ def main() -> None:
     parser.add_argument("--status", required=True, choices=["running", "complete", "failed"])
     parser.add_argument("--output-path", default=None)
     parser.add_argument("--error", default=None)
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="On a failed status, best-effort run scripts/diagnose_job.py for an AI diagnosis.",
+    )
     args = parser.parse_args()
 
     distill_home = os.environ.get("DISTILL_HOME", os.path.expanduser("~/.distill"))
@@ -51,6 +60,23 @@ def main() -> None:
 
     with open(status_path, "w") as f:
         json.dump(payload, f, indent=2)
+
+    if args.status == "failed" and args.diagnose:
+        run_diagnosis(distill_home, args.job_id)
+
+
+def run_diagnosis(distill_home: str, job_id: str) -> None:
+    """Best-effort — a diagnosis failure must never fail the DAG's failure
+    handler itself, so every error here is caught and logged, not raised."""
+    diagnose_script = os.path.join(distill_home, "scripts", "diagnose_job.py")
+    try:
+        subprocess.run(
+            [sys.executable, diagnose_script, "--job-id", job_id],
+            timeout=DIAGNOSE_TIMEOUT_SEC,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"completion_hook.py: diagnosis step failed ({e}), continuing", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -57,3 +57,4 @@ handlerOn:
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status failed
       --output-path "${QUANTIZED_DIR}"
+      --diagnose

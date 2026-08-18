@@ -162,6 +162,42 @@ export async function cancelJob(jobId: string): Promise<boolean> {
 	return cancelDagRun(dagName, meta.dagRunId);
 }
 
+export interface JobDiagnosis {
+	diagnosisMarkdown: string | null;
+	suggestedRetryParams: JobParams | null;
+}
+
+/** Reads the AI diagnosis written by scripts/diagnose_job.py for a failed job, if any. */
+export async function getJobDiagnosis(jobId: string): Promise<JobDiagnosis> {
+	const dir = path.join(RESULTS_DIR, jobId);
+	const diagnosisMarkdown = await readFile(path.join(dir, 'diagnosis.md'), 'utf-8').catch(
+		() => null
+	);
+	const suggestedRetryParams = await readJson<JobParams>(path.join(dir, 'suggested_retry.json'));
+	return { diagnosisMarkdown, suggestedRetryParams };
+}
+
+/** Resubmits a job's original input file under a new job id, merging in overridden params. */
+export async function retryJobWithParams(
+	jobId: string,
+	overrideParams: JobParams
+): Promise<string> {
+	const meta = await readJson<JobMeta>(metaPath(jobId));
+	if (!meta) throw new Error(`Job ${jobId} not found`);
+
+	const { nanoid } = await import('nanoid');
+	const newId = nanoid(10);
+	await submitJob({
+		id: newId,
+		team: meta.team,
+		type: meta.type,
+		params: { ...meta.params, ...overrideParams },
+		inputFile: meta.inputFile,
+		submittedAt: new Date().toISOString()
+	});
+	return newId;
+}
+
 export async function getResultDirSizeBytes(jobId: string): Promise<number> {
 	const dir = path.join(RESULTS_DIR, jobId);
 	let total = 0;

@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { invalidateAll, replaceState } from '$app/navigation';
-	import type { PageData } from './$types';
+	import { enhance } from '$app/forms';
+	import type { ActionData, PageData } from './$types';
 	import { statusBadgeClass, formatDuration, formatTimestamp } from '$lib/format';
 	import { pushToast } from '$lib/toast.svelte';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let retrying = $state(false);
 
 	$effect(() => {
 		if ($page.url.searchParams.get('submitted') === '1') {
@@ -17,7 +19,10 @@
 	});
 
 	$effect(() => {
-		if (data.job.status === 'queued' || data.job.status === 'running') {
+		// Keep polling briefly after a failure too: diagnose_job.py runs inside
+		// the failure handler and can take up to ~2 minutes to write diagnosis.md.
+		const awaitingDiagnosis = data.job.status === 'failed' && !data.diagnosis.diagnosisMarkdown;
+		if (data.job.status === 'queued' || data.job.status === 'running' || awaitingDiagnosis) {
 			const interval = setInterval(() => {
 				invalidateAll();
 			}, 5000);
@@ -94,6 +99,49 @@
 {#if data.job.status === 'failed' && data.job.error}
 	<div class="mt-6 rounded-md border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
 		{data.job.error}
+	</div>
+{/if}
+
+{#if data.job.status === 'failed'}
+	<div class="card mt-6 p-4">
+		<h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">AI diagnosis</h2>
+		{#if form?.error}
+			<div class="mt-3 rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs text-red-300">
+				{form.error}
+			</div>
+		{/if}
+		{#if data.diagnosis.diagnosisMarkdown}
+			<pre
+				class="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-black p-3 font-mono text-xs text-zinc-300">{data
+					.diagnosis.diagnosisMarkdown}</pre>
+			{#if data.diagnosis.suggestedRetryParams && Object.keys(data.diagnosis.suggestedRetryParams).length > 0}
+				<div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-border bg-bg-subtle px-3 py-2">
+					<div class="font-mono text-xs text-zinc-400">
+						{JSON.stringify(data.diagnosis.suggestedRetryParams)}
+					</div>
+					<form
+						method="POST"
+						action="?/retry"
+						use:enhance={() => {
+							retrying = true;
+							return async ({ update }) => {
+								await update();
+								retrying = false;
+							};
+						}}
+					>
+						<button type="submit" class="btn-secondary shrink-0" disabled={retrying}>
+							{retrying ? 'Retrying…' : 'Retry with suggested params'}
+						</button>
+					</form>
+				</div>
+			{/if}
+		{:else}
+			<p class="mt-3 text-sm text-zinc-500">
+				Waiting for automated diagnosis (runs headless right after failure, can take a couple
+				minutes)…
+			</p>
+		{/if}
 	</div>
 {/if}
 
