@@ -40,6 +40,11 @@ steps:
       --q-group-size ${Q_GROUP_SIZE}
     stdout: ${RESULTS_DIR}/log.txt
     stderr: ${RESULTS_DIR}/log.txt
+    # mlx_lm.convert overwrites --mlx-path on each run, so a plain retry is
+    # safe and doesn't need the checkpoint-resume dance finetune.yaml does.
+    retryPolicy:
+      limit: 3
+      intervalSec: 30
 
 handlerOn:
   success:

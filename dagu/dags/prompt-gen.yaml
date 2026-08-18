@@ -33,6 +33,11 @@ steps:
       --output "${RESULTS_DIR}/output.jsonl"
     stdout: ${RESULTS_DIR}/log.txt
     stderr: ${RESULTS_DIR}/log.txt
+    # Transient failures (disk hiccup, etc.) get retried automatically; the
+    # failure handler below only fires once retries are exhausted.
+    retryPolicy:
+      limit: 3
+      intervalSec: 30
 
 handlerOn:
   success:
