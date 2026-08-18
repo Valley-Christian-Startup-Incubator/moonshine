@@ -13,8 +13,8 @@ Browser ──▶ SvelteKit app (port 3000) ──▶ Dagu REST API (port 8081) 
 ## Quick start (on the Mac Studio)
 
 ```bash
-git clone <this-repo> distill-scheduler
-cd distill-scheduler
+git clone https://github.com/Valley-Christian-Startup-Incubator/moonshine.git
+cd moonshine
 ./setup.sh
 ```
 
