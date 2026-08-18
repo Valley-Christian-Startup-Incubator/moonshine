@@ -1,0 +1,57 @@
+# LoRA fine-tuning DAG — runs mlx_lm.lora against INPUT_FILE (training
+# JSONL), writing adapter weights under the results dir.
+
+name: finetune
+queue: mac-studio
+maxActiveRuns: 1
+timeoutSec: 43200 # 12 hours
+
+params: >
+  JOB_ID=
+  TEAM=
+  INPUT_FILE=
+  MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
+  ADAPTER_PATH=adapters
+  ITERS=1000
+  BATCH_SIZE=4
+  LEARNING_RATE=1e-5
+
+env:
+  - DISTILL_HOME: ${HOME}/.distill
+  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
+  - VENV: ${HOME}/.distill-venv
+  - ADAPTER_DIR: ${RESULTS_DIR}/${ADAPTER_PATH}
+
+steps:
+  - name: prepare
+    command: mkdir -p ${RESULTS_DIR} ${ADAPTER_DIR}
+
+  - name: mark-running
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status running
+
+  - name: lora-train
+    command: >
+      ${VENV}/bin/mlx_lm.lora
+      --model "${MODEL_PATH}"
+      --train
+      --data "${INPUT_FILE}"
+      --adapter-path "${ADAPTER_DIR}"
+      --iters ${ITERS}
+      --batch-size ${BATCH_SIZE}
+      --learning-rate ${LEARNING_RATE}
+    stdout: ${RESULTS_DIR}/log.txt
+    stderr: ${RESULTS_DIR}/log.txt
+
+handlerOn:
+  success:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status complete
+      --output-path "${ADAPTER_DIR}"
+  failure:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status failed
+      --output-path "${ADAPTER_DIR}"

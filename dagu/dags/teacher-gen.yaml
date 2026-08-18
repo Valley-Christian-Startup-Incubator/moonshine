@@ -1,0 +1,54 @@
+# Teacher generation DAG — runs prompts from INPUT_FILE through a teacher
+# model via mlx_lm.generate (wrapped by scripts/batch_generate.py so we can
+# process a JSONL of prompts instead of a single string), writing
+# completions to ~/.distill/results/$JOB_ID/output.jsonl.
+
+name: teacher-gen
+queue: mac-studio
+maxActiveRuns: 1
+timeoutSec: 14400 # 4 hours
+
+params: >
+  JOB_ID=
+  TEAM=
+  INPUT_FILE=
+  MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
+  MAX_TOKENS=512
+  TEMPERATURE=0.7
+
+env:
+  - DISTILL_HOME: ${HOME}/.distill
+  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
+  - VENV: ${HOME}/.distill-venv
+
+steps:
+  - name: prepare
+    command: mkdir -p ${RESULTS_DIR}
+
+  - name: mark-running
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status running
+
+  - name: generate-completions
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/batch_generate.py
+      --model "${MODEL_PATH}"
+      --input "${INPUT_FILE}"
+      --output "${RESULTS_DIR}/output.jsonl"
+      --max-tokens ${MAX_TOKENS}
+      --temperature ${TEMPERATURE}
+    stdout: ${RESULTS_DIR}/log.txt
+    stderr: ${RESULTS_DIR}/log.txt
+
+handlerOn:
+  success:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status complete
+      --output-path "${RESULTS_DIR}/output.jsonl"
+  failure:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status failed
+      --output-path "${RESULTS_DIR}/output.jsonl"

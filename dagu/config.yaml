@@ -1,0 +1,34 @@
+# Dagu server configuration for the Mac Studio distillation scheduler.
+# Installed at ~/.distill/dagu/config.yaml by setup.sh.
+#
+# The Dagu web UI here is an ADMIN-ONLY operational view (raw DAG runs, logs,
+# retries). Students use the SvelteKit app on port 3000; it talks to this
+# server's REST API on 8081 server-side only.
+
+host: 0.0.0.0
+port: 8081
+
+# Where Dagu keeps its own run history / state (auto-created).
+dataDir: ~/.distill/dagu/data
+logDir: ~/.distill/dagu/data/logs
+dagsDir: ~/.distill/dagu/dags
+
+# Basic auth in front of the Dagu web UI + REST API. Change these via
+# environment variables before running setup.sh in a real deployment:
+#   DAGU_USER, DAGU_PASSWORD
+auth:
+  basic:
+    enabled: true
+    username: ${DAGU_USER:-admin}
+    password: ${DAGU_PASSWORD:-admin}
+
+# A single global queue enforces strict serial execution across every job
+# type and every team — only one MLX job touches the GPU/ANE at a time.
+queues:
+  enabled: true
+  config:
+    - name: mac-studio
+      maxConcurrency: 1
+
+# Generous defaults; each DAG also sets its own timeout.
+maxActiveRuns: 1

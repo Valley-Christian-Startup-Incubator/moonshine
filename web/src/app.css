@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	:root {
+		color-scheme: dark;
+	}
+	body {
+		font-family:
+			-apple-system,
+			BlinkMacSystemFont,
+			'Inter',
+			'Segoe UI',
+			sans-serif;
+	}
+}
+
+@layer components {
+	.card {
+		@apply rounded-lg border border-border bg-bg-elevated;
+	}
+	.input {
+		@apply w-full rounded-md border border-border bg-bg-subtle px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition-colors focus:border-zinc-500;
+	}
+	.label {
+		@apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+	}
+	.btn-primary {
+		@apply inline-flex items-center justify-center rounded-md bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50;
+	}
+	.btn-secondary {
+		@apply inline-flex items-center justify-center rounded-md border border-border bg-bg-subtle px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50;
+	}
+	.btn-danger {
+		@apply inline-flex items-center justify-center rounded-md border border-red-900 bg-red-950 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-900;
+	}
+	.badge {
+		@apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+	}
+	.badge-queued {
+		@apply bg-blue-950 text-blue-300 ring-1 ring-inset ring-blue-800;
+	}
+	.badge-running {
+		@apply bg-amber-950 text-amber-300 ring-1 ring-inset ring-amber-800;
+	}
+	.badge-success {
+		@apply bg-emerald-950 text-emerald-300 ring-1 ring-inset ring-emerald-800;
+	}
+	.badge-failed {
+		@apply bg-red-950 text-red-300 ring-1 ring-inset ring-red-800;
+	}
+	.badge-neutral {
+		@apply bg-zinc-800 text-zinc-300 ring-1 ring-inset ring-zinc-700;
+	}
+}

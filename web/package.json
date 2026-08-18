@@ -1,0 +1,29 @@
+{
+	"name": "distill-scheduler-web",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"start": "node build/index.js"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-node": "^5.2.0",
+		"@sveltejs/kit": "^2.9.0",
+		"@sveltejs/vite-plugin-svelte": "^4.0.0",
+		"@types/node": "^22.10.0",
+		"autoprefixer": "^10.4.20",
+		"postcss": "^8.4.49",
+		"svelte": "^5.15.0",
+		"svelte-check": "^4.1.0",
+		"tailwindcss": "^3.4.15",
+		"typescript": "^5.7.2",
+		"vite": "^5.4.11"
+	},
+	"dependencies": {
+		"nanoid": "^5.0.9"
+	}
+}

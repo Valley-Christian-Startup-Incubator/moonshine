@@ -1,0 +1,47 @@
+# Prompt generation DAG — placeholder/skeleton, since prompt generation logic
+# is project-specific. Reads INPUT_FILE (a JSONL config) and writes
+# ~/.distill/results/$JOB_ID/output.jsonl.
+#
+# NOTE: field names (`queue`, `timeoutSec`, `handlerOn`) target Dagu ~1.14.
+# Verify against `dagu --version` / the installed docs if behavior differs.
+
+name: prompt-gen
+queue: mac-studio
+maxActiveRuns: 1
+timeoutSec: 1800 # 30 minutes
+
+params: JOB_ID= TEAM= INPUT_FILE=
+
+env:
+  - DISTILL_HOME: ${HOME}/.distill
+  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
+  - VENV: ${HOME}/.distill-venv
+
+steps:
+  - name: prepare
+    command: mkdir -p ${RESULTS_DIR}
+
+  - name: mark-running
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status running
+
+  - name: generate-prompts
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/prompt_gen.py
+      --input "${INPUT_FILE}"
+      --output "${RESULTS_DIR}/output.jsonl"
+    stdout: ${RESULTS_DIR}/log.txt
+    stderr: ${RESULTS_DIR}/log.txt
+
+handlerOn:
+  success:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status complete
+      --output-path "${RESULTS_DIR}/output.jsonl"
+  failure:
+    command: >
+      ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
+      --job-id "${JOB_ID}" --status failed
+      --output-path "${RESULTS_DIR}/output.jsonl"

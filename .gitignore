@@ -1,0 +1,31 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local env / secrets (setup.sh writes generated credentials here)
+.env
+.env.*
+!.env.example
+
+# Runtime state this project generates outside of ~/.distill (shouldn't
+# normally live in the repo, but ignore defensively in case something is
+# run from here during local testing)
+*.log
+*.pid
+/logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Downloaded/installed at setup time — never commit these
+/dagu-bin/
+*.tar.gz
