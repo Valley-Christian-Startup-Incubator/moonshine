@@ -24,9 +24,34 @@ ORIG_PATH="${PATH}"
 EXTRA_PATH="${BIN_DIR}:/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin"
 export PATH="${EXTRA_PATH}:${PATH}"
 
+# Credentials. Re-running setup.sh must NOT rotate these — students and
+# operators already have the passwords from the first run. Precedence:
+# explicit environment variable > value already in ${ENV_FILE} > freshly
+# generated (first install only).
+ENV_FILE="${DISTILL_HOME}/env"
+
+prev_env() {
+	[[ -f "${ENV_FILE}" ]] || return 0
+	sed -n "s/^$1=//p" "${ENV_FILE}" | tail -1
+}
+
+DAGU_USER="${DAGU_USER:-$(prev_env DAGU_USER)}"
 DAGU_USER="${DAGU_USER:-admin}"
+
+DAGU_PASSWORD="${DAGU_PASSWORD:-$(prev_env DAGU_PASSWORD)}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(prev_env ADMIN_PASSWORD)}"
+
+if [[ -n "${DAGU_PASSWORD}" && -n "${ADMIN_PASSWORD}" ]]; then
+	CREDS_NOTE="(unchanged from your previous run)"
+else
+	CREDS_NOTE="(newly generated — save them)"
+fi
 DAGU_PASSWORD="${DAGU_PASSWORD:-$(openssl rand -hex 8)}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -hex 8)}"
+
+# Same treatment: an unset DIAGNOSTIC_AGENT shouldn't wipe a previously
+# configured one.
+DIAGNOSTIC_AGENT="${DIAGNOSTIC_AGENT:-$(prev_env DIAGNOSTIC_AGENT)}"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1" >&2; }
@@ -171,7 +196,6 @@ chmod +x "${DISTILL_HOME}"/scripts/*.py "${DISTILL_HOME}"/scripts/*.sh
 # ---------------------------------------------------------------------------
 log "Writing environment file"
 # ---------------------------------------------------------------------------
-ENV_FILE="${DISTILL_HOME}/env"
 cat > "${ENV_FILE}" <<EOF
 DISTILL_HOME=${DISTILL_HOME}
 DAGU_BASE_URL=http://127.0.0.1:${DAGU_PORT}
@@ -180,7 +204,7 @@ DAGU_PASSWORD=${DAGU_PASSWORD}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 PORT=${WEB_PORT}
 BODY_SIZE_LIMIT=Infinity
-DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT:-}
+DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT}
 EOF
 chmod 600 "${ENV_FILE}"
 
@@ -224,7 +248,7 @@ cat > "${DAGU_PLIST}" <<EOF
 		     shells out to `claude`/`codex` by name, so PATH needs to include
 		     wherever those CLIs are installed. -->
 		<key>PATH</key><string>${EXTRA_PATH}:/usr/bin:/bin:/usr/sbin:/sbin</string>
-		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT:-}</string>
+		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT}</string>
 	</dict>
 </dict>
 </plist>
@@ -282,7 +306,8 @@ cat <<SUMMARY
    Username:       ${DAGU_USER}
    Password:       ${DAGU_PASSWORD}
 
- Credentials are also saved to: ${DISTILL_HOME}/env
+ Credentials ${CREDS_NOTE}
+ They are also saved to: ${DISTILL_HOME}/env
 
  Services run via launchd and start automatically on boot:
    com.distill.dagu   (Dagu server, port ${DAGU_PORT})
