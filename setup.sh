@@ -2,12 +2,17 @@
 # Bootstrap the distillation job scheduler on a Mac Studio (Apple Silicon).
 # Installs Dagu, mlx-lm, builds the SvelteKit app, and wires up background
 # services. Safe to re-run — every step is idempotent.
+#
+# Runs entirely as your own user: everything lands under $HOME (binaries in
+# ~/.local/bin, app + data in ~/.distill, LaunchAgents in ~/Library), so no
+# sudo or admin rights are needed at any point.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
 VENV_DIR="${VENV_DIR:-$HOME/.distill-venv}"
+BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 DAGU_VERSION="${DAGU_VERSION:-1.16.6}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 WEB_PORT="${WEB_PORT:-3000}"
@@ -15,7 +20,8 @@ DAGU_PORT="${DAGU_PORT:-8081}"
 
 # Common install locations for tools that aren't always on the default
 # launchd PATH (Homebrew, uv, npm-global, the diagnostic agent CLIs).
-EXTRA_PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin"
+ORIG_PATH="${PATH}"
+EXTRA_PATH="${BIN_DIR}:/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin"
 export PATH="${EXTRA_PATH}:${PATH}"
 
 DAGU_USER="${DAGU_USER:-admin}"
@@ -30,7 +36,8 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
 	die "This script targets Apple Silicon Macs (Darwin/arm64)."
 fi
 
-command -v brew >/dev/null 2>&1 || die "Homebrew is required. Install it from https://brew.sh first."
+# Homebrew isn't required — it's only used as a fallback to install Node if
+# it's missing, and Homebrew itself installs into a user-writable prefix.
 
 # ---------------------------------------------------------------------------
 log "Creating directory structure at ${DISTILL_HOME}"
@@ -57,10 +64,23 @@ else
 	curl -fsSL "${DAGU_URL}" -o "${TMP_DIR}/${DAGU_TARBALL}" \
 		|| die "Failed to download Dagu. Check DAGU_VERSION or your network connection."
 	tar -xzf "${TMP_DIR}/${DAGU_TARBALL}" -C "${TMP_DIR}"
-	install -m 755 "${TMP_DIR}/dagu" /usr/local/bin/dagu
+	mkdir -p "${BIN_DIR}"
+	install -m 755 "${TMP_DIR}/dagu" "${BIN_DIR}/dagu"
 	rm -rf "${TMP_DIR}"
-	log "Installed dagu $(dagu version 2>/dev/null || echo "${DAGU_VERSION}") to /usr/local/bin/dagu"
+	log "Installed dagu $(dagu version 2>/dev/null || echo "${DAGU_VERSION}") to ${BIN_DIR}/dagu"
 fi
+
+# Prefer the copy we manage; only fall back to a pre-existing one on PATH.
+if [[ -x "${BIN_DIR}/dagu" ]]; then
+	DAGU_BIN="${BIN_DIR}/dagu"
+else
+	DAGU_BIN="$(command -v dagu)"
+fi
+
+case ":${ORIG_PATH}:" in
+	*":${BIN_DIR}:"*) ;;
+	*) warn "${BIN_DIR} is not on your PATH — add it to your shell profile so you can run dagu directly: export PATH=\"${BIN_DIR}:\$PATH\"" ;;
+esac
 
 # ---------------------------------------------------------------------------
 log "Setting up Python ${PYTHON_VERSION} venv at ${VENV_DIR}"
@@ -108,8 +128,12 @@ fi
 log "Installing Node.js dependencies and building the SvelteKit app"
 # ---------------------------------------------------------------------------
 if ! command -v node >/dev/null 2>&1; then
-	log "Node.js not found, installing via Homebrew"
-	brew install node
+	if command -v brew >/dev/null 2>&1; then
+		log "Node.js not found, installing via Homebrew"
+		brew install node
+	else
+		die "Node.js 20+ is required and neither node nor Homebrew was found. Install Node into your home directory (e.g. via https://github.com/nvm-sh/nvm or https://mise.jdx.dev) and re-run."
+	fi
 fi
 
 node_major="$(node -v | sed 's/v//' | cut -d. -f1)"
@@ -181,7 +205,7 @@ cat > "${DAGU_PLIST}" <<EOF
 	<key>Label</key><string>com.distill.dagu</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/local/bin/dagu</string>
+		<string>${DAGU_BIN}</string>
 		<string>start-all</string>
 		<string>--config</string>
 		<string>${DISTILL_HOME}/dagu/config.yaml</string>

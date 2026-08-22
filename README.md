@@ -13,7 +13,10 @@ cd moonshine
 ```
 
 `setup.sh` installs everything needed (Python, Dagu, the web app) and
-registers it to start automatically on boot. It prints the web UI URL,
+registers it to start automatically on boot. It never needs `sudo` — every
+file it writes lives under your home directory (`~/.local/bin` for the Dagu
+binary, `~/.distill` for the app and its data, `~/Library/LaunchAgents` for
+the boot services). It prints the web UI URL,
 admin password, and operator credentials at the end — **save that output**,
 it's the only place the generated passwords are shown in full (they're also
 saved to `~/.distill/env`, readable only by your user account).

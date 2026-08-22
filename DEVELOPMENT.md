@@ -127,6 +127,24 @@ blast radius than one that only reads logs and proposes numbers.
 handler blocks; `completion_hook.py`'s own subprocess timeout (150s) is a
 generous outer bound on top of that.
 
+## Install locations (no admin rights required)
+
+`setup.sh` is deliberately sudo-free — the Mac Studio's day-to-day users
+aren't necessarily admins on it. Everything it writes is under `$HOME`:
+
+| What | Where | Override |
+| --- | --- | --- |
+| `dagu` binary | `~/.local/bin/dagu` | `BIN_DIR` |
+| App, DAGs, results, logs | `~/.distill` | `DISTILL_HOME` |
+| Python venv | `~/.distill-venv` | `VENV_DIR` |
+| Boot services | `~/Library/LaunchAgents/com.distill.*.plist` | — |
+
+The plists reference the resolved `dagu` path directly, so `~/.local/bin`
+doesn't need to be on launchd's `PATH` for the services to start. It does
+need to be on *your* `PATH` to run `dagu` by hand; `setup.sh` warns if it
+isn't. Homebrew is optional — it's only consulted as a fallback for
+installing Node, and installs into a user-writable prefix itself.
+
 ## Python environment
 
 `setup.sh` provisions Python via [uv](https://astral.sh/uv) rather than
@@ -145,8 +163,9 @@ npm-global install locations. Dagu's own steps use absolute paths (the venv
 python, `dagu` itself) so this mostly doesn't matter, except for the
 diagnosis step, which shells out to `claude`/`codex` **by name**. `setup.sh`
 sets an explicit `PATH` in `com.distill.dagu.plist`'s
-`EnvironmentVariables` covering `/opt/homebrew/bin`, `/usr/local/bin`,
-`~/.local/bin`, `~/.cargo/bin`, and `~/.npm-global/bin` — if you install
+`EnvironmentVariables` covering `$BIN_DIR` (default `~/.local/bin`),
+`/opt/homebrew/bin`, `/usr/local/bin`, `~/.cargo/bin`, and
+`~/.npm-global/bin` — if you install
 `claude`/`codex` somewhere else, add that path there too (or set
 `DIAGNOSTIC_AGENT` to a full path via a small wrapper script on one of the
 covered directories).
