@@ -32,6 +32,11 @@
 						{item.label}
 					</a>
 				{/each}
+				<form method="POST" action="/logout">
+					<button type="submit" class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200">
+						Sign out
+					</button>
+				</form>
 			</nav>
 		</div>
 	</header>

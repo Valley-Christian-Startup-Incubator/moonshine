@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # Manually start Dagu + the SvelteKit web app as background processes.
-# Installed to ~/.distill/start.sh by setup.sh. Prefer `launchctl load` for
-# boot-persistent services (setup.sh already registers those) — use this
+# Installed to ~/.distill/start.sh by setup.sh. Prefer the launchd services
+# registered by setup.sh for persistence — use this
 # script for a manual restart without touching launchd.
 
 set -euo pipefail
 
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
-set -a # export everything sourced below, so `dagu start-all` (spawned
-       # plainly, not with inline VAR=val prefixes) inherits it too —
-       # notably DIAGNOSTIC_AGENT and DAGU_USER/PASSWORD for config.yaml.
-source "${DISTILL_HOME}/env"
-set +a
+# The env file is deliberately data, not shell code. Reading it this way keeps
+# passwords containing spaces or shell metacharacters intact.
+while IFS='=' read -r key value; do
+	case "${key}" in
+		DISTILL_HOME|DAGU_BASE_URL|DAGU_PORT|DAGU_USER|DAGU_PASSWORD|ADMIN_PASSWORD|WEB_PASSWORD|PORT|BODY_SIZE_LIMIT|DIAGNOSTIC_AGENT)
+			export "${key}=${value}"
+			;;
+	esac
+done < "${DISTILL_HOME}/env"
 export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin:${PATH}"
 
 PID_DIR="${DISTILL_HOME}/logs"
@@ -32,7 +36,7 @@ else
 	(cd "${DISTILL_HOME}/web" && \
 		DISTILL_HOME="${DISTILL_HOME}" PORT="${PORT}" BODY_SIZE_LIMIT=Infinity \
 		DAGU_BASE_URL="${DAGU_BASE_URL}" DAGU_USER="${DAGU_USER}" DAGU_PASSWORD="${DAGU_PASSWORD}" \
-		ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+		ADMIN_PASSWORD="${ADMIN_PASSWORD}" WEB_PASSWORD="${WEB_PASSWORD}" \
 		nohup node build/index.js \
 		> "${PID_DIR}/web.out.log" 2> "${PID_DIR}/web.err.log" &)
 	sleep 1

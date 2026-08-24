@@ -89,12 +89,11 @@ train differently:
   sanity check — two same-sized but different vocabularies will silently
   misalign and train garbage.
 
-  ⚠️ **This has not been run on real hardware.** MLX is Apple-Silicon-only,
-  so it couldn't be tested in the environment it was written in. The
-  training math and control flow follow the standard mlx-examples LoRA
-  pattern, but expect a debugging pass on the actual Mac Studio the first
-  time `distill` runs — see the version-drift entry below for the specific
-  APIs most likely to need adjustment.
+  **Hardware verified.** On the Mac Studio, MLX 0.32.1 and mlx-lm 0.31.3
+  completed a 20-iteration Qwen2.5 1.5B/0.5B run. Loss fell from 2.1415 to
+  0.5202, all KL/CE values stayed finite, checkpoints were written at the
+  requested intervals, an interrupted run resumed at the next iteration,
+  and a two-iteration run completed through Dagu and the web submission flow.
 
 ## AI diagnosis on failure
 
@@ -180,9 +179,10 @@ without inline `VAR=val` prefixes — still inherits `DAGU_USER`,
 Several things in this repo pin to a specific external API/CLI surface and
 may need adjustment if you're on a different release:
 
-- `web/src/lib/server/dagu.ts` — targets Dagu's `v1` REST API. If job
-  submission/cancellation fails after `setup.sh` installs a newer Dagu,
-  check that release's REST API docs and adjust the paths in that one file.
+- `web/src/lib/server/dagu.ts` targets the `v2` REST API bundled with Dagu
+  1.17.4. Job submission uses `/api/v2/dags/{name}/enqueue`; run listing,
+  status, and cancellation use `/api/v2/dag-runs`. Check that bundled
+  OpenAPI spec before changing the pinned Dagu version.
 - `scripts/batch_generate.py` — targets `mlx_lm.generate()`'s current
   Python API. If `mlx-lm` changes its `temp`/sampler argument shape, this
   is the only file that needs updating.
@@ -194,14 +194,14 @@ may need adjustment if you're on a different release:
   --output-format text` and `codex exec` are still the right non-interactive
   invocations for the installed CLI versions. Both tools' headless flags
   have changed across releases; this function is the only place to update.
-- `scripts/distill_train.py` — **highest risk in the repo**, not just
-  version drift: it's untested hand-written MLX training code (see above).
-  Specifically likely to need fixing: `linear_to_lora_layers`'s config dict
-  shape (`rank`/`alpha`/`dropout`/`scale` keys — `mlx_lm.tuner` has changed
-  its LoRA config schema across releases), whether `student.unfreeze(keys=[...])`
-  is still how to re-enable grad on injected LoRA params after `freeze()`,
-  and whether `mlx_lm.load()`'s returned model is still callable directly
-  as `model(input_ids) -> logits` for both teacher and student architectures.
+- `scripts/distill_train.py` is verified against MLX 0.32.1 and mlx-lm
+  0.31.3. In that release, `linear_to_lora_layers` expects `rank`, `scale`,
+  and `dropout`; LoRA modules expose trainable `lora_a`/`lora_b` keys through
+  `unfreeze(keys=[...])`; and both loaded Qwen2.5 models are callable as
+  `model(input_ids) -> logits`. Recheck these three assumptions when either
+  MLX package changes.
 
-`DAGU_VERSION` and `PYTHON_VERSION` in `setup.sh` are pinned explicitly —
-bump them deliberately rather than tracking `latest`.
+`DAGU_VERSION` and `PYTHON_VERSION` in `setup.sh` are pinned explicitly.
+Dagu 1.17.4 is the first compatible release line with the shared FIFO queue
+schema used by these DAGs. Bump either dependency deliberately rather than
+tracking `latest`.

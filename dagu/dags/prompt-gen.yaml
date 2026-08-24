@@ -2,24 +2,25 @@
 # is project-specific. Reads INPUT_FILE (a JSONL config) and writes
 # ~/.distill/results/$JOB_ID/output.jsonl.
 #
-# NOTE: field names (`queue`, `timeoutSec`, `handlerOn`) target Dagu ~1.14.
-# Verify against `dagu --version` / the installed docs if behavior differs.
+# Field names target the Dagu 1.17.x release pinned by setup.sh.
 
 name: prompt-gen
 queue: mac-studio
 maxActiveRuns: 1
 timeoutSec: 1800 # 30 minutes
 
-params: JOB_ID= TEAM= INPUT_FILE=
+params:
+  - JOB_ID: ""
+  - TEAM: ""
+  - INPUT_FILE: ""
 
 env:
   - DISTILL_HOME: ${HOME}/.distill
-  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
   - VENV: ${HOME}/.distill-venv
 
 steps:
   - name: prepare
-    command: mkdir -p ${RESULTS_DIR}
+    command: mkdir -p "${HOME}/.distill/results/${JOB_ID}"
 
   - name: mark-running
     command: >
@@ -30,9 +31,9 @@ steps:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/prompt_gen.py
       --input "${INPUT_FILE}"
-      --output "${RESULTS_DIR}/output.jsonl"
-    stdout: ${RESULTS_DIR}/log.txt
-    stderr: ${RESULTS_DIR}/log.txt
+      --output "${HOME}/.distill/results/${JOB_ID}/output.jsonl"
+    stdout: ${HOME}/.distill/results/${JOB_ID}/log.txt
+    stderr: ${HOME}/.distill/results/${JOB_ID}/log.txt
     # Transient failures (disk hiccup, etc.) get retried automatically; the
     # failure handler below only fires once retries are exhausted.
     retryPolicy:
@@ -44,10 +45,10 @@ handlerOn:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status complete
-      --output-path "${RESULTS_DIR}/output.jsonl"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/output.jsonl"
   failure:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status failed
-      --output-path "${RESULTS_DIR}/output.jsonl"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/output.jsonl"
       --diagnose

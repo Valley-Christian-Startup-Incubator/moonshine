@@ -17,14 +17,9 @@ BATCH_SIZE="$5"
 LEARNING_RATE="$6"
 SAVE_EVERY="$7"
 
-RESUME_ARGS=()
 latest_checkpoint="$(ls -1 "${ADAPTER_DIR}"/*_adapters.safetensors 2>/dev/null | sort -t/ -k1 -V | tail -1 || true)"
-if [[ -n "${latest_checkpoint}" ]]; then
-	echo "Resuming LoRA training from checkpoint: ${latest_checkpoint}"
-	RESUME_ARGS=(--resume-adapter-file "${latest_checkpoint}")
-fi
 
-exec mlx_lm.lora \
+set -- mlx_lm.lora \
 	--model "${MODEL_PATH}" \
 	--train \
 	--data "${INPUT_FILE}" \
@@ -32,5 +27,11 @@ exec mlx_lm.lora \
 	--iters "${ITERS}" \
 	--batch-size "${BATCH_SIZE}" \
 	--learning-rate "${LEARNING_RATE}" \
-	--save-every "${SAVE_EVERY}" \
-	"${RESUME_ARGS[@]}"
+	--save-every "${SAVE_EVERY}"
+
+if [[ -n "${latest_checkpoint}" ]]; then
+	echo "Resuming LoRA training from checkpoint: ${latest_checkpoint}"
+	set -- "$@" --resume-adapter-file "${latest_checkpoint}"
+fi
+
+exec "$@"

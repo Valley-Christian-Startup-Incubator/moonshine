@@ -13,10 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
 VENV_DIR="${VENV_DIR:-$HOME/.distill-venv}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
-DAGU_VERSION="${DAGU_VERSION:-1.16.6}"
+DAGU_VERSION="${DAGU_VERSION:-1.17.4}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
-WEB_PORT="${WEB_PORT:-3000}"
-DAGU_PORT="${DAGU_PORT:-8081}"
 
 # Common install locations for tools that aren't always on the default
 # launchd PATH (Homebrew, uv, npm-global, the diagnostic agent CLIs).
@@ -35,11 +33,17 @@ prev_env() {
 	sed -n "s/^$1=//p" "${ENV_FILE}" | tail -1
 }
 
+WEB_PORT="${WEB_PORT:-$(prev_env PORT)}"
+WEB_PORT="${WEB_PORT:-3000}"
+DAGU_PORT="${DAGU_PORT:-$(prev_env DAGU_PORT)}"
+DAGU_PORT="${DAGU_PORT:-8081}"
+
 DAGU_USER="${DAGU_USER:-$(prev_env DAGU_USER)}"
 DAGU_USER="${DAGU_USER:-admin}"
 
 DAGU_PASSWORD="${DAGU_PASSWORD:-$(prev_env DAGU_PASSWORD)}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(prev_env ADMIN_PASSWORD)}"
+WEB_PASSWORD="${WEB_PASSWORD:-$(prev_env WEB_PASSWORD)}"
 
 if [[ -n "${DAGU_PASSWORD}" && -n "${ADMIN_PASSWORD}" ]]; then
 	CREDS_NOTE="(unchanged from your previous run)"
@@ -48,6 +52,7 @@ else
 fi
 DAGU_PASSWORD="${DAGU_PASSWORD:-$(openssl rand -hex 8)}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -hex 8)}"
+WEB_PASSWORD="${WEB_PASSWORD:-${ADMIN_PASSWORD}}"
 
 # Same treatment: an unset DIAGNOSTIC_AGENT shouldn't wipe a previously
 # configured one.
@@ -79,7 +84,7 @@ mkdir -p \
 # ---------------------------------------------------------------------------
 log "Installing Dagu ${DAGU_VERSION}"
 # ---------------------------------------------------------------------------
-if command -v dagu >/dev/null 2>&1 && dagu version 2>/dev/null | grep -q "${DAGU_VERSION}"; then
+if command -v dagu >/dev/null 2>&1 && dagu version 2>&1 | grep -q "${DAGU_VERSION}"; then
 	log "Dagu ${DAGU_VERSION} already installed, skipping."
 else
 	DAGU_TARBALL="dagu_${DAGU_VERSION}_darwin_arm64.tar.gz"
@@ -92,7 +97,7 @@ else
 	mkdir -p "${BIN_DIR}"
 	install -m 755 "${TMP_DIR}/dagu" "${BIN_DIR}/dagu"
 	rm -rf "${TMP_DIR}"
-	log "Installed dagu $(dagu version 2>/dev/null || echo "${DAGU_VERSION}") to ${BIN_DIR}/dagu"
+	log "Installed dagu $(dagu version 2>&1 || echo "${DAGU_VERSION}") to ${BIN_DIR}/dagu"
 fi
 
 # Prefer the copy we manage; only fall back to a pre-existing one on PATH.
@@ -165,6 +170,7 @@ node_major="$(node -v | sed 's/v//' | cut -d. -f1)"
 if [[ "${node_major}" -lt 20 ]]; then
 	die "Node.js 20+ required, found $(node -v)."
 fi
+NODE_BIN="$(command -v node)"
 
 pushd "${SCRIPT_DIR}/web" >/dev/null
 npm install
@@ -199,9 +205,11 @@ log "Writing environment file"
 cat > "${ENV_FILE}" <<EOF
 DISTILL_HOME=${DISTILL_HOME}
 DAGU_BASE_URL=http://127.0.0.1:${DAGU_PORT}
+DAGU_PORT=${DAGU_PORT}
 DAGU_USER=${DAGU_USER}
 DAGU_PASSWORD=${DAGU_PASSWORD}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
+WEB_PASSWORD=${WEB_PASSWORD}
 PORT=${WEB_PORT}
 BODY_SIZE_LIMIT=Infinity
 DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT}
@@ -245,11 +253,12 @@ cat > "${DAGU_PLIST}" <<EOF
 		<!-- launchd's default PATH is just /usr/bin:/bin:/usr/sbin:/sbin, which
 		     misses Homebrew/uv/npm-global. Dagu's steps use absolute paths for
 		     the venv and dagu itself, but the failure-handler diagnosis step
-		     shells out to `claude`/`codex` by name, so PATH needs to include
+		     shells out to claude/codex by name, so PATH needs to include
 		     wherever those CLIs are installed. -->
 		<key>PATH</key><string>${EXTRA_PATH}:/usr/bin:/bin:/usr/sbin:/sbin</string>
 		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT}</string>
 	</dict>
+	<key>LimitLoadToSessionType</key><string>Background</string>
 </dict>
 </plist>
 EOF
@@ -262,8 +271,7 @@ cat > "${WEB_PLIST}" <<EOF
 	<key>Label</key><string>com.distill.web</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/bin/env</string>
-		<string>node</string>
+		<string>${NODE_BIN}</string>
 		<string>${DISTILL_HOME}/web/build/index.js</string>
 	</array>
 	<key>RunAtLoad</key><true/>
@@ -277,18 +285,51 @@ cat > "${WEB_PLIST}" <<EOF
 		<key>DAGU_USER</key><string>${DAGU_USER}</string>
 		<key>DAGU_PASSWORD</key><string>${DAGU_PASSWORD}</string>
 		<key>ADMIN_PASSWORD</key><string>${ADMIN_PASSWORD}</string>
+		<key>WEB_PASSWORD</key><string>${WEB_PASSWORD}</string>
 		<key>PORT</key><string>${WEB_PORT}</string>
 		<key>BODY_SIZE_LIMIT</key><string>Infinity</string>
 	</dict>
+	<key>LimitLoadToSessionType</key><string>Background</string>
 </dict>
 </plist>
 EOF
 
 log "Loading launchd services"
-launchctl unload "${DAGU_PLIST}" >/dev/null 2>&1 || true
-launchctl unload "${WEB_PLIST}" >/dev/null 2>&1 || true
-launchctl load "${DAGU_PLIST}"
-launchctl load "${WEB_PLIST}"
+LAUNCHD_DOMAIN="user/$(id -u)"
+launchctl bootout "${LAUNCHD_DOMAIN}/com.distill.dagu" >/dev/null 2>&1 || true
+launchctl bootout "${LAUNCHD_DOMAIN}/com.distill.web" >/dev/null 2>&1 || true
+
+# bootout is asynchronous. Give the old processes a moment to release their
+# ports, then fail clearly if another application owns either one.
+for _ in {1..20}; do
+	if ! nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1 \
+		&& ! nc -z 127.0.0.1 "${WEB_PORT}" >/dev/null 2>&1; then
+		break
+	fi
+	sleep 0.1
+done
+nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1 \
+	&& die "Port ${DAGU_PORT} is already in use. Re-run with DAGU_PORT=<free port>."
+nc -z 127.0.0.1 "${WEB_PORT}" >/dev/null 2>&1 \
+	&& die "Port ${WEB_PORT} is already in use. Re-run with WEB_PORT=<free port>."
+
+launchctl bootstrap "${LAUNCHD_DOMAIN}" "${DAGU_PLIST}"
+launchctl bootstrap "${LAUNCHD_DOMAIN}" "${WEB_PLIST}"
+
+wait_for_port() {
+	local service="$1"
+	local port="$2"
+	for _ in {1..50}; do
+		if nc -z 127.0.0.1 "${port}" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 0.1
+	done
+	die "${service} did not start on port ${port}. Check ${DISTILL_HOME}/logs for details."
+}
+
+wait_for_port "Dagu" "${DAGU_PORT}"
+wait_for_port "Web app" "${WEB_PORT}"
 
 # ---------------------------------------------------------------------------
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || echo "<mac-studio-ip>")"
@@ -299,6 +340,7 @@ cat <<SUMMARY
  Distillation Job Scheduler — setup complete
 ────────────────────────────────────────────────────────────────
  Student web UI:   http://${LAN_IP}:${WEB_PORT}   (also http://localhost:${WEB_PORT})
+   Shared password: ${WEB_PASSWORD}
  Admin panel:      http://${LAN_IP}:${WEB_PORT}/admin
    Admin password: ${ADMIN_PASSWORD}
 

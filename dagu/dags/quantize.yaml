@@ -7,23 +7,21 @@ queue: mac-studio
 maxActiveRuns: 1
 timeoutSec: 14400 # 4 hours
 
-params: >
-  JOB_ID=
-  TEAM=
-  INPUT_FILE=
-  MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct
-  Q_BITS=4
-  Q_GROUP_SIZE=64
+params:
+  - JOB_ID: ""
+  - TEAM: ""
+  - INPUT_FILE: ""
+  - MODEL_PATH: mlx-community/Meta-Llama-3.1-8B-Instruct
+  - Q_BITS: 4
+  - Q_GROUP_SIZE: 64
 
 env:
   - DISTILL_HOME: ${HOME}/.distill
-  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
   - VENV: ${HOME}/.distill-venv
-  - QUANTIZED_DIR: ${RESULTS_DIR}/quantized-model
 
 steps:
   - name: prepare
-    command: mkdir -p ${RESULTS_DIR}
+    command: mkdir -p "${HOME}/.distill/results/${JOB_ID}"
 
   - name: mark-running
     command: >
@@ -34,12 +32,12 @@ steps:
     command: >
       ${VENV}/bin/mlx_lm.convert
       --hf-path "${MODEL_PATH}"
-      --mlx-path "${QUANTIZED_DIR}"
+      --mlx-path "${HOME}/.distill/results/${JOB_ID}/quantized-model"
       -q
       --q-bits ${Q_BITS}
       --q-group-size ${Q_GROUP_SIZE}
-    stdout: ${RESULTS_DIR}/log.txt
-    stderr: ${RESULTS_DIR}/log.txt
+    stdout: ${HOME}/.distill/results/${JOB_ID}/log.txt
+    stderr: ${HOME}/.distill/results/${JOB_ID}/log.txt
     # mlx_lm.convert overwrites --mlx-path on each run, so a plain retry is
     # safe and doesn't need the checkpoint-resume dance finetune.yaml does.
     retryPolicy:
@@ -51,10 +49,10 @@ handlerOn:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status complete
-      --output-path "${QUANTIZED_DIR}"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/quantized-model"
   failure:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status failed
-      --output-path "${QUANTIZED_DIR}"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/quantized-model"
       --diagnose

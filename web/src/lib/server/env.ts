@@ -7,5 +7,6 @@ export const DAGU_USER = process.env.DAGU_USER ?? 'admin';
 export const DAGU_PASSWORD = process.env.DAGU_PASSWORD ?? 'admin';
 
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'change-me';
+export const WEB_PASSWORD = process.env.WEB_PASSWORD ?? '';
 
 export const ADMIN_SESSION_COOKIE = 'distill_admin';

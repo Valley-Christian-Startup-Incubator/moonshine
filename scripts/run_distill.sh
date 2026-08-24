@@ -24,14 +24,9 @@ LORA_LAYERS="${12}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-RESUME_ARGS=()
 latest_checkpoint="$(ls -1 "${ADAPTER_DIR}"/*_adapters.safetensors 2>/dev/null | sort -t/ -k1 -V | tail -1 || true)"
-if [[ -n "${latest_checkpoint}" ]]; then
-	echo "Resuming distillation from checkpoint: ${latest_checkpoint}"
-	RESUME_ARGS=(--resume-adapter-file "${latest_checkpoint}")
-fi
 
-exec python3 "${SCRIPT_DIR}/distill_train.py" \
+set -- python3 "${SCRIPT_DIR}/distill_train.py" \
 	--teacher-model "${TEACHER_MODEL}" \
 	--student-model "${STUDENT_MODEL}" \
 	--data "${INPUT_FILE}" \
@@ -43,5 +38,11 @@ exec python3 "${SCRIPT_DIR}/distill_train.py" \
 	--temperature "${TEMPERATURE}" \
 	--alpha "${ALPHA}" \
 	--lora-rank "${LORA_RANK}" \
-	--lora-layers "${LORA_LAYERS}" \
-	"${RESUME_ARGS[@]}"
+	--lora-layers "${LORA_LAYERS}"
+
+if [[ -n "${latest_checkpoint}" ]]; then
+	echo "Resuming distillation from checkpoint: ${latest_checkpoint}"
+	set -- "$@" --resume-adapter-file "${latest_checkpoint}"
+fi
+
+exec "$@"

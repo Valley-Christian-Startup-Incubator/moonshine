@@ -6,27 +6,27 @@ queue: mac-studio
 maxActiveRuns: 1
 timeoutSec: 43200 # 12 hours
 
-params: >
-  JOB_ID=
-  TEAM=
-  INPUT_FILE=
-  MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
-  ADAPTER_PATH=adapters
-  ITERS=1000
-  BATCH_SIZE=4
-  LEARNING_RATE=1e-5
-  SAVE_EVERY=100
+params:
+  - JOB_ID: ""
+  - TEAM: ""
+  - INPUT_FILE: ""
+  - MODEL_PATH: mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
+  - ADAPTER_PATH: adapters
+  - ITERS: 1000
+  - BATCH_SIZE: 4
+  - LEARNING_RATE: 1e-5
+  - SAVE_EVERY: 100
 
 env:
   - DISTILL_HOME: ${HOME}/.distill
-  - RESULTS_DIR: ${DISTILL_HOME}/results/${JOB_ID}
   - VENV: ${HOME}/.distill-venv
-  - ADAPTER_DIR: ${RESULTS_DIR}/${ADAPTER_PATH}
   - PATH: ${HOME}/.distill-venv/bin:${PATH}
 
 steps:
   - name: prepare
-    command: mkdir -p ${RESULTS_DIR} ${ADAPTER_DIR}
+    command: >
+      mkdir -p "${HOME}/.distill/results/${JOB_ID}"
+      "${HOME}/.distill/results/${JOB_ID}/${ADAPTER_PATH}"
 
   - name: mark-running
     command: >
@@ -36,10 +36,11 @@ steps:
   - name: lora-train
     command: >
       bash ${DISTILL_HOME}/scripts/run_lora.sh
-      "${MODEL_PATH}" "${INPUT_FILE}" "${ADAPTER_DIR}"
+      "${MODEL_PATH}" "${INPUT_FILE}"
+      "${HOME}/.distill/results/${JOB_ID}/${ADAPTER_PATH}"
       "${ITERS}" "${BATCH_SIZE}" "${LEARNING_RATE}" "${SAVE_EVERY}"
-    stdout: ${RESULTS_DIR}/log.txt
-    stderr: ${RESULTS_DIR}/log.txt
+    stdout: ${HOME}/.distill/results/${JOB_ID}/log.txt
+    stderr: ${HOME}/.distill/results/${JOB_ID}/log.txt
     # A retry resumes from the last checkpoint (see run_lora.sh) instead of
     # restarting a potentially 12-hour training run from iteration 0.
     retryPolicy:
@@ -51,10 +52,10 @@ handlerOn:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status complete
-      --output-path "${ADAPTER_DIR}"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/${ADAPTER_PATH}"
   failure:
     command: >
       ${VENV}/bin/python ${DISTILL_HOME}/scripts/completion_hook.py
       --job-id "${JOB_ID}" --status failed
-      --output-path "${ADAPTER_DIR}"
+      --output-path "${HOME}/.distill/results/${JOB_ID}/${ADAPTER_PATH}"
       --diagnose

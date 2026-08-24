@@ -26,14 +26,10 @@ misalign and produce garbage.
 Input JSONL row shape (matches teacher-gen.yaml's output.jsonl):
     {"prompt": "...", "completion": "..."}
 
-╔═══════════════════════════════════════════════════════════════════════╗
-║ THIS FILE HAS NOT BEEN RUN ON REAL HARDWARE. MLX is Apple-Silicon-only ║
-║ and unavailable in the environment this was written in. The training  ║
-║ math and control flow follow the standard mlx-examples LoRA pattern,  ║
-║ but treat this as a first draft that needs a debugging pass on the    ║
-║ Mac Studio, not verified code. See DEVELOPMENT.md's version-drift     ║
-║ section for the specific APIs most likely to have shifted.            ║
-╚═══════════════════════════════════════════════════════════════════════╝
+Verified on Apple Silicon with MLX 0.32.1 and mlx-lm 0.31.3 using a
+Qwen2.5 1.5B/0.5B teacher-student pair. Direct training, finite KL/CE
+losses, checkpoint creation, interrupted-run resume, and the installed
+Dagu workflow have all completed successfully.
 """
 
 import argparse
@@ -136,9 +132,14 @@ def kl_and_ce_loss(student_logits, teacher_logits, targets, mask, temperature: f
 def find_latest_checkpoint(adapter_dir: Path) -> Path | None:
 	checkpoints = sorted(
 		adapter_dir.glob("*_adapters.safetensors"),
-		key=lambda p: int(p.name.split("_")[0]) if p.name.split("_")[0].isdigit() else -1,
+		key=checkpoint_iteration,
 	)
 	return checkpoints[-1] if checkpoints else None
+
+
+def checkpoint_iteration(path: Path) -> int:
+	prefix = path.name.split("_", 1)[0]
+	return int(prefix) if prefix.isdigit() else 0
 
 
 def main() -> None:
@@ -175,7 +176,7 @@ def main() -> None:
 			"shared tokenizer. Use models from the same family."
 		)
 
-	lora_config = {"rank": args.lora_rank, "alpha": args.lora_rank * 2, "dropout": 0.0, "scale": 20.0}
+	lora_config = {"rank": args.lora_rank, "dropout": 0.0, "scale": 20.0}
 	linear_to_lora_layers(student, args.lora_layers, lora_config)
 	student.freeze()
 	# linear_to_lora_layers unfreezes the LoRA-injected params it adds; the
@@ -185,14 +186,31 @@ def main() -> None:
 			module.unfreeze(keys=["lora_a", "lora_b"])
 
 	resume_path = args.resume_adapter_file or find_latest_checkpoint(adapter_dir)
+	completed_iterations = 0
 	if resume_path and Path(resume_path).exists():
 		print(f"Resuming from checkpoint: {resume_path}", file=sys.stderr)
 		student.load_weights(str(resume_path), strict=False)
+		completed_iterations = checkpoint_iteration(Path(resume_path))
+
+	if completed_iterations >= args.iters:
+		print(
+			f"Checkpoint already completed {completed_iterations} iterations "
+			f"(requested {args.iters}); nothing to do",
+			file=sys.stderr,
+		)
+		print("Training complete", file=sys.stderr)
+		return
 
 	rows = read_rows(args.data)
 	examples = build_examples(rows, tokenizer)
-	print(f"Training on {len(examples)} examples for {args.iters} iterations", file=sys.stderr)
+	print(
+		f"Training on {len(examples)} examples from iteration "
+		f"{completed_iterations + 1} through {args.iters}",
+		file=sys.stderr,
+	)
 	batches = batch_iterator(examples, args.batch_size)
+	for _ in range(completed_iterations):
+		next(batches)
 
 	optimizer = optim.Adam(learning_rate=args.learning_rate)
 	pad_id = tokenizer.eos_token_id or 0
@@ -210,7 +228,7 @@ def main() -> None:
 		print(f"Saved checkpoint at iteration {iteration}", file=sys.stderr)
 
 	start_time = time.time()
-	for it in range(1, args.iters + 1):
+	for it in range(completed_iterations + 1, args.iters + 1):
 		batch = next(batches)
 		input_ids, lengths, prompt_lens = pad_batch(batch, pad_id)
 		batch_size, seq_len = input_ids.shape

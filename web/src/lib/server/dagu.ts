@@ -3,12 +3,11 @@ import { DAGU_BASE_URL, DAGU_USER, DAGU_PASSWORD } from './env';
 /**
  * Thin server-side client for Dagu's REST API.
  *
- * Dagu's API surface has shifted across releases (v1 -> v2). The paths below
- * target the v1 REST API documented at https://docs.dagu.cloud/reference/rest-api
- * as of Dagu ~1.14. If `setup.sh` pins a different Dagu release, verify these
- * paths against `dagu` --help / the bundled OpenAPI spec and adjust here —
- * this is the only file that talks to Dagu directly.
+ * These paths target the v2 REST API bundled with the Dagu 1.17.x release
+ * pinned by setup.sh. This is the only file that talks to Dagu directly.
  */
+
+const API_BASE = '/api/v2';
 
 function authHeader(): string {
 	return 'Basic ' + Buffer.from(`${DAGU_USER}:${DAGU_PASSWORD}`).toString('base64');
@@ -49,7 +48,7 @@ export const DAGU_STATUS = {
 
 export async function isDaguHealthy(): Promise<boolean> {
 	try {
-		const res = await daguFetch('/api/v1/health');
+		const res = await daguFetch(`${API_BASE}/health`);
 		return res.ok;
 	} catch {
 		return false;
@@ -62,10 +61,10 @@ export async function enqueueDag(
 	params: Record<string, string | number>
 ): Promise<{ dagRunId: string }> {
 	const paramString = Object.entries(params)
-		.map(([k, v]) => `${k}=${v}`)
+		.map(([k, v]) => `${k}="${String(v).replace(/(["\\])/g, '\\$1')}"`)
 		.join(' ');
 
-	const res = await daguFetch(`/api/v1/dags/${dagName}/start`, {
+	const res = await daguFetch(`${API_BASE}/dags/${encodeURIComponent(dagName)}/enqueue`, {
 		method: 'POST',
 		body: JSON.stringify({ params: paramString })
 	});
@@ -81,7 +80,7 @@ export async function enqueueDag(
 
 /** List recent dag-runs across all templates (used by /jobs and /admin dashboards). */
 export async function listDagRuns(): Promise<DaguDagRunSummary[]> {
-	const res = await daguFetch('/api/v1/dag-runs');
+	const res = await daguFetch(`${API_BASE}/dag-runs`);
 	if (!res.ok) return [];
 	const data = (await res.json().catch(() => ({ dagRuns: [] }))) as {
 		dagRuns?: DaguDagRunSummary[];
@@ -93,25 +92,34 @@ export async function getDagRunStatus(
 	dagName: string,
 	dagRunId: string
 ): Promise<DaguDagRunSummary | null> {
-	const res = await daguFetch(`/api/v1/dags/${dagName}/dag-runs/${dagRunId}`);
+	const res = await daguFetch(
+		`${API_BASE}/dag-runs/${encodeURIComponent(dagName)}/${encodeURIComponent(dagRunId)}`
+	);
 	if (!res.ok) return null;
-	return (await res.json().catch(() => null)) as DaguDagRunSummary | null;
+	const data = (await res.json().catch(() => null)) as {
+		dagRunDetails?: DaguDagRunSummary;
+	} | null;
+	return data?.dagRunDetails ?? null;
 }
 
 export async function cancelDagRun(dagName: string, dagRunId: string): Promise<boolean> {
-	const res = await daguFetch(`/api/v1/dags/${dagName}/dag-runs/${dagRunId}/stop`, {
-		method: 'POST'
-	});
+	const res = await daguFetch(
+		`${API_BASE}/dag-runs/${encodeURIComponent(dagName)}/${encodeURIComponent(dagRunId)}/stop`,
+		{ method: 'POST' }
+	);
 	return res.ok;
 }
 
 /** Position (1-indexed) of a queued run within the mac-studio global queue, if queued. */
 export async function getQueuePosition(dagRunId: string): Promise<number | null> {
-	const res = await daguFetch('/api/v1/queues/mac-studio');
+	const res = await daguFetch(`${API_BASE}/dag-runs?status=${DAGU_STATUS.QUEUED}`);
 	if (!res.ok) return null;
-	const data = (await res.json().catch(() => ({ items: [] }))) as {
-		items?: { dagRunId: string }[];
+	const data = (await res.json().catch(() => ({ dagRuns: [] }))) as {
+		dagRuns?: DaguDagRunSummary[];
 	};
-	const idx = (data.items ?? []).findIndex((i) => i.dagRunId === dagRunId);
+	const queuedRuns = (data.dagRuns ?? []).sort((a, b) =>
+		(a.queuedAt ?? '').localeCompare(b.queuedAt ?? '')
+	);
+	const idx = queuedRuns.findIndex((run) => run.dagRunId === dagRunId);
 	return idx === -1 ? null : idx + 1;
 }
