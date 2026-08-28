@@ -25,10 +25,9 @@ import json
 import os
 import sys
 
-# mlx_lm's generate() signature has shifted across releases (e.g. `temp` vs
-# a `sampler=make_sampler(temp=...)` argument in newer versions). Verify
-# against the pinned mlx-lm version in setup.sh if generation errors on temp.
+# mlx-lm 0.31.3 accepts a sampler rather than a direct temperature argument.
 from mlx_lm import generate, load
+from mlx_lm.sample_utils import make_sampler
 
 
 def main() -> None:
@@ -77,6 +76,7 @@ def main() -> None:
 
     print(f"Loading model: {args.model}", file=sys.stderr)
     model, tokenizer = load(args.model)
+    sampler = make_sampler(temp=args.temperature)
 
     print(f"Generating {len(remaining)} completions", file=sys.stderr)
     with open(args.output, "a") as outfile:
@@ -95,7 +95,7 @@ def main() -> None:
                 tokenizer,
                 prompt=formatted,
                 max_tokens=args.max_tokens,
-                temp=args.temperature,
+                sampler=sampler,
             )
 
             outfile.write(json.dumps({"prompt": prompt, "completion": completion}) + "\n")

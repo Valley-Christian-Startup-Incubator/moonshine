@@ -16,6 +16,17 @@ except ImportError:
 
 @unittest.skipIf(distill_train is None, "distillation unit tests require MLX on Apple Silicon")
 class DistillTrainTests(unittest.TestCase):
+	def test_encode_example_appends_end_of_sequence_token(self):
+		class Tokenizer:
+			eos_token_id = 99
+
+			def encode(self, text):
+				return [ord(character) for character in text]
+
+		ids, prompt_len = distill_train.encode_example(Tokenizer(), "P", "C")
+		self.assertEqual(ids, [ord("P"), ord("C"), 99])
+		self.assertEqual(prompt_len, 1)
+
 	def test_loss_mask_excludes_prompt_and_padding_tokens(self):
 		mask = distill_train.build_loss_mask(
 			batch_size=2,

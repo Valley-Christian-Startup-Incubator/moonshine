@@ -61,6 +61,9 @@ def format_prompt(tokenizer, prompt: str) -> str:
 def encode_example(tokenizer, prompt_text: str, completion_text: str) -> tuple[list[int], int]:
 	prompt_ids = tokenizer.encode(prompt_text)
 	full_ids = tokenizer.encode(prompt_text + completion_text)
+	eos_id = tokenizer.eos_token_id
+	if eos_id is not None and (not full_ids or full_ids[-1] != eos_id):
+		full_ids.append(eos_id)
 	# If the tokenizer isn't perfectly prefix-stable across the concatenation
 	# boundary, this can be off by a token or two right at the boundary —
 	# acceptable label noise for LoRA-scale training, not worth a slower
@@ -161,6 +164,18 @@ def main() -> None:
 
 	adapter_dir = Path(args.adapter_path)
 	adapter_dir.mkdir(parents=True, exist_ok=True)
+	adapter_config = {
+		"fine_tune_type": "lora",
+		"num_layers": args.lora_layers,
+		"lora_parameters": {
+			"rank": args.lora_rank,
+			"dropout": 0.0,
+			"scale": 20.0,
+		},
+	}
+	with open(adapter_dir / "adapter_config.json", "w") as f:
+		json.dump(adapter_config, f, indent=2)
+		f.write("\n")
 
 	print(f"Loading teacher: {args.teacher_model}", file=sys.stderr)
 	teacher, tokenizer = load(args.teacher_model)
