@@ -80,7 +80,9 @@ family (shared tokenizer).
 Jobs that fail from a transient hiccup (a brief network blip, a memory
 spike) are retried automatically — you usually don't need to do anything.
 If a job still fails after retries, the job page shows an AI-generated
-diagnosis of what likely went wrong.
+diagnosis of what likely went wrong. That diagnosis can use Claude Code,
+Codex, or a local model served by Ollama. Local models run through a bounded,
+read-only Pydantic AI agent and return schema-validated retry parameters.
 
 ## What's intentionally not here
 

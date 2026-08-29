@@ -15,6 +15,7 @@ VENV_DIR="${VENV_DIR:-$HOME/.distill-venv}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 DAGU_VERSION="${DAGU_VERSION:-1.17.4}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
+PYDANTIC_AI_VERSION="${PYDANTIC_AI_VERSION:-2.35.3}"
 
 # Common install locations for tools that aren't always on the default
 # launchd PATH (Homebrew, uv, npm-global, the diagnostic agent CLIs).
@@ -57,6 +58,10 @@ WEB_PASSWORD="${WEB_PASSWORD:-${ADMIN_PASSWORD}}"
 # Same treatment: an unset DIAGNOSTIC_AGENT shouldn't wipe a previously
 # configured one.
 DIAGNOSTIC_AGENT="${DIAGNOSTIC_AGENT:-$(prev_env DIAGNOSTIC_AGENT)}"
+DIAGNOSTIC_MODEL="${DIAGNOSTIC_MODEL:-$(prev_env DIAGNOSTIC_MODEL)}"
+DIAGNOSTIC_MODEL="${DIAGNOSTIC_MODEL:-qwen3.8:27b-mlx}"
+DIAGNOSTIC_OLLAMA_URL="${DIAGNOSTIC_OLLAMA_URL:-$(prev_env DIAGNOSTIC_OLLAMA_URL)}"
+DIAGNOSTIC_OLLAMA_URL="${DIAGNOSTIC_OLLAMA_URL:-http://127.0.0.1:11434}"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1" >&2; }
@@ -131,7 +136,8 @@ if command -v uv >/dev/null 2>&1; then
 	if [[ ! -d "${VENV_DIR}" ]]; then
 		uv venv "${VENV_DIR}" --python "${PYTHON_VERSION}"
 	fi
-	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm
+	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm \
+		"pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
 	uv pip install --python "${VENV_DIR}/bin/python" mlx-tune \
 		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
 else
@@ -149,7 +155,7 @@ else
 		python3 -m venv "${VENV_DIR}"
 	fi
 	"${VENV_DIR}/bin/pip" install --upgrade pip
-	"${VENV_DIR}/bin/pip" install mlx-lm
+	"${VENV_DIR}/bin/pip" install mlx-lm "pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
 	"${VENV_DIR}/bin/pip" install mlx-tune \
 		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
 fi
@@ -213,6 +219,8 @@ WEB_PASSWORD=${WEB_PASSWORD}
 PORT=${WEB_PORT}
 BODY_SIZE_LIMIT=Infinity
 DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT}
+DIAGNOSTIC_MODEL=${DIAGNOSTIC_MODEL}
+DIAGNOSTIC_OLLAMA_URL=${DIAGNOSTIC_OLLAMA_URL}
 EOF
 chmod 600 "${ENV_FILE}"
 
@@ -257,6 +265,8 @@ cat > "${DAGU_PLIST}" <<EOF
 		     wherever those CLIs are installed. -->
 		<key>PATH</key><string>${EXTRA_PATH}:/usr/bin:/bin:/usr/sbin:/sbin</string>
 		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT}</string>
+		<key>DIAGNOSTIC_MODEL</key><string>${DIAGNOSTIC_MODEL}</string>
+		<key>DIAGNOSTIC_OLLAMA_URL</key><string>${DIAGNOSTIC_OLLAMA_URL}</string>
 	</dict>
 	<key>LimitLoadToSessionType</key><string>Background</string>
 </dict>

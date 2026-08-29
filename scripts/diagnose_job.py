@@ -8,6 +8,9 @@ OpenAI Codex CLI — with the job's params and log tail, and asks it to
 explain the likely cause and, if the fix looks like a parameter change
 (e.g. lower batch size for an OOM), propose adjusted params.
 
+The agent can also be a local Ollama model. Pydantic AI runs that model in
+a bounded, read-only tool loop and validates its final answer.
+
 This script never edits files or resubmits jobs itself. It only writes
 diagnosis.md (shown on the job detail page) and, if the agent proposed
 one, suggested_retry.json (a plain param dict a human can choose to retry
@@ -25,12 +28,15 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.request
 
 AGENT_TIMEOUT_SEC = 120
 LOG_TAIL_LINES = 150
+DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
+DEFAULT_OLLAMA_MODEL = "qwen3.8:27b-mlx"
 
-PROMPT_TEMPLATE = """You are diagnosing a failed job on a classroom ML job scheduler (Dagu + MLX on Apple Silicon).
-Read the job info and log tail below and answer in exactly this format:
+TEXT_RESPONSE_INSTRUCTIONS = """You are diagnosing a failed job on a classroom ML job scheduler (Dagu + MLX on Apple Silicon).
+Read the job context below and answer in exactly this format:
 
 ## Diagnosis
 <1-3 sentences: the likely root cause>
@@ -41,7 +47,9 @@ Read the job info and log tail below and answer in exactly this format:
 ## Retry params
 <A JSON object with ONLY the parameter keys that should change and their new values, e.g. {{"BATCH_SIZE": 2}}. \
 If no parameter change is appropriate (needs a different input file, a code fix, isn't retryable, etc.), output exactly: {{}}>
+"""
 
+JOB_CONTEXT_TEMPLATE = """
 Job type: {job_type}
 Team: {team}
 Params: {params}
@@ -53,10 +61,61 @@ Log tail (last {log_lines} lines):
 """
 
 
-def find_agent_cli():
-	"""Returns (cli_name, invoke_fn) for whichever headless agent CLI is on
-	PATH, preferring $DIAGNOSTIC_AGENT if set to "claude" or "codex".
-	Returns (None, None) if neither is installed.
+def text_response_prompt(job_context: str) -> str:
+	return f"{TEXT_RESPONSE_INSTRUCTIONS}\n{job_context}"
+
+
+def invoke_ollama(
+	prompt: str,
+	*,
+	distill_home: str,
+	results_dir: str,
+	allowed_retry_keys: set[str],
+) -> subprocess.CompletedProcess:
+	"""Run the diagnostic prompt through the local Pydantic AI agent."""
+	base_url = os.environ.get("DIAGNOSTIC_OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/")
+	model = os.environ.get("DIAGNOSTIC_MODEL", DEFAULT_OLLAMA_MODEL).strip()
+	try:
+		from local_diagnostic_agent import run_local_diagnosis
+
+		content = run_local_diagnosis(
+			prompt,
+			distill_home=distill_home,
+			results_dir=results_dir,
+			model_name=model,
+			base_url=base_url,
+			allowed_retry_keys=allowed_retry_keys,
+		)
+		if not content:
+			return subprocess.CompletedProcess(
+				["pydantic-ai", model], 1, "", "local agent returned no diagnosis"
+			)
+		return subprocess.CompletedProcess(["pydantic-ai", model], 0, content, "")
+	except Exception as e:
+		return subprocess.CompletedProcess(
+			["pydantic-ai", model], 1, "", f"{type(e).__name__}: {str(e)[:450]}"
+		)
+
+
+def ollama_is_available() -> bool:
+	base_url = os.environ.get("DIAGNOSTIC_OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/")
+	try:
+		with urllib.request.urlopen(f"{base_url}/api/tags", timeout=1):
+			return True
+	except (OSError, urllib.error.URLError):
+		return False
+
+
+def find_agent(
+	*,
+	distill_home: str | None = None,
+	results_dir: str | None = None,
+	allowed_retry_keys: set[str] | None = None,
+):
+	"""Returns (agent_name, invoke_fn) for an available diagnostic agent.
+
+	Prefers $DIAGNOSTIC_AGENT when set to "ollama", "claude", or "codex".
+	Returns (None, None) if no configured backend is available.
 
 	NOTE: both CLIs' non-interactive flags have shifted across releases.
 	Verify `claude -p` / `codex exec` still match the installed version if
@@ -64,24 +123,34 @@ def find_agent_cli():
 	updating.
 	"""
 	preferred = os.environ.get("DIAGNOSTIC_AGENT", "").strip().lower()
-	candidates = ["claude", "codex"]
+	candidates = ["claude", "codex", "ollama"]
 	if preferred in candidates:
 		candidates = [preferred] + [c for c in candidates if c != preferred]
 
 	for name in candidates:
+		if name == "ollama":
+			if preferred == "ollama" or ollama_is_available():
+				model = os.environ.get("DIAGNOSTIC_MODEL", DEFAULT_OLLAMA_MODEL).strip()
+				return f"ollama/{model}", lambda prompt: invoke_ollama(
+					prompt,
+					distill_home=distill_home or os.path.expanduser("~/.distill"),
+					results_dir=results_dir or "",
+					allowed_retry_keys=allowed_retry_keys or set(),
+				)
+			continue
 		path = shutil.which(name)
 		if not path:
 			continue
 		if name == "claude":
 			return name, lambda prompt: subprocess.run(
-				[path, "-p", prompt, "--output-format", "text"],
+				[path, "-p", text_response_prompt(prompt), "--output-format", "text"],
 				capture_output=True,
 				text=True,
 				timeout=AGENT_TIMEOUT_SEC,
 			)
 		if name == "codex":
 			return name, lambda prompt: subprocess.run(
-				[path, "exec", "--skip-git-repo-check", prompt],
+				[path, "exec", "--skip-git-repo-check", text_response_prompt(prompt)],
 				capture_output=True,
 				text=True,
 				timeout=AGENT_TIMEOUT_SEC,
@@ -139,15 +208,22 @@ def main() -> None:
 	except OSError:
 		tail = "(no log output captured)"
 
-	cli_name, invoke = find_agent_cli()
+	params = meta.get("params", {})
+	if not isinstance(params, dict):
+		params = {}
+	agent_name, invoke = find_agent(
+		distill_home=distill_home,
+		results_dir=results_dir,
+		allowed_retry_keys=set(params),
+	)
 	if invoke is None:
-		write_fallback(results_dir, "no `claude` or `codex` CLI found on PATH")
+		write_fallback(results_dir, "no Claude, Codex, or Ollama backend available")
 		return
 
-	prompt = PROMPT_TEMPLATE.format(
+	prompt = JOB_CONTEXT_TEMPLATE.format(
 		job_type=meta.get("type", "unknown"),
 		team=meta.get("team", "unknown"),
-		params=json.dumps(meta.get("params", {})),
+		params=json.dumps(params),
 		log_lines=LOG_TAIL_LINES,
 		log_tail=tail,
 	)
@@ -155,22 +231,22 @@ def main() -> None:
 	try:
 		result = invoke(prompt)
 	except subprocess.TimeoutExpired:
-		write_fallback(results_dir, f"{cli_name} timed out after {AGENT_TIMEOUT_SEC}s")
+		write_fallback(results_dir, f"{agent_name} timed out after {AGENT_TIMEOUT_SEC}s")
 		return
 	except OSError as e:
-		write_fallback(results_dir, f"failed to run {cli_name} ({e})")
+		write_fallback(results_dir, f"failed to run {agent_name} ({e})")
 		return
 
 	if result.returncode != 0 or not result.stdout.strip():
 		write_fallback(
 			results_dir,
-			f"{cli_name} exited {result.returncode}: {result.stderr.strip()[:500]}",
+			f"{agent_name} exited {result.returncode}: {result.stderr.strip()[:500]}",
 		)
 		return
 
 	output = result.stdout.strip()
 	with open(os.path.join(results_dir, "diagnosis.md"), "w") as f:
-		f.write(f"_Diagnosed by `{cli_name}` (headless)._\n\n{output}\n")
+		f.write(f"_Diagnosed by `{agent_name}` (headless)._\n\n{output}\n")
 
 	retry_params = extract_retry_params(output)
 	if retry_params:

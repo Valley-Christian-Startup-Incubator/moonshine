@@ -101,18 +101,23 @@ When a job exhausts its retries, `handlerOn.failure` in that job's DAG
 calls `scripts/completion_hook.py --status failed --diagnose`. With
 `--diagnose` set, the hook shells out to `scripts/diagnose_job.py`, which:
 
-1. Detects whichever headless coding agent CLI is on `PATH` — `claude`
-   (Claude Code, `claude -p`) or `codex` (OpenAI Codex CLI, `codex exec`).
-   Preference order is `$DIAGNOSTIC_AGENT` (`claude` or `codex`) if set,
-   otherwise whichever is found first. If neither is installed, it writes
-   a one-line "diagnosis unavailable" note and exits — this is always a
-   soft failure, never something that fails the DAG run itself.
+1. Selects Claude Code, Codex, or a local Ollama server. Set
+   `DIAGNOSTIC_AGENT=ollama` to prefer Ollama, `DIAGNOSTIC_MODEL` to its model
+   ID, and `DIAGNOSTIC_OLLAMA_URL` if the server is not at
+   `http://127.0.0.1:11434`. The local path uses Pydantic AI's Ollama
+   provider, so the Ollama CLI does not need to be on `PATH`. If no backend
+   is available, the script writes a one-line "diagnosis unavailable" note
+   and exits. Diagnosis is always a soft failure and cannot fail the DAG run.
 2. Sends the job's params and the last 150 lines of `log.txt` in a fixed
-   prompt template, asking for a diagnosis, a suggested fix, and — only if
-   a parameter change looks like the fix — a JSON object of params to
-   change.
+   prompt. The local agent can make up to eight model requests and eight tool
+   calls. Its tools can read or search the full log, list and read that job's
+   text artifacts, and inspect deployed scripts and DAG definitions. Every
+   path is checked against its allowed directory. There is no shell or write
+   tool, and the whole run has a 110-second deadline.
 3. Writes `diagnosis.md` (shown on the job's detail page) and, if the
-   agent proposed param changes, `suggested_retry.json`.
+   agent proposed param changes, `suggested_retry.json`. Pydantic validates
+   the local model's output and removes retry keys that were not present in
+   the original job parameters.
 
 The agent **never edits files or resubmits jobs itself**. A human clicks
 "Retry with suggested params" on the job page, which calls
@@ -149,7 +154,9 @@ installing Node, and installs into a user-writable prefix itself.
 `setup.sh` provisions Python via [uv](https://astral.sh/uv) rather than
 depending on whatever `python3` happens to be on the system: it installs
 uv itself if missing, then `uv python install ${PYTHON_VERSION}` (default
-`3.12`) and `uv venv --python ${PYTHON_VERSION}`. This means a fresh Mac
+`3.12`) and `uv venv --python ${PYTHON_VERSION}`. It installs
+`pydantic-ai-slim[openai]` in the same venv for the local diagnostic agent.
+This means a fresh Mac
 Studio doesn't need Python preinstalled at a compatible version. If uv
 can't be installed (no network, sandboxed environment), it falls back to
 system `python3` and hard-fails if that's older than 3.11.
@@ -159,8 +166,8 @@ system `python3` and hard-fails if that's older than 3.11.
 launchd's default `PATH` for a `LaunchAgent` is just
 `/usr/bin:/bin:/usr/sbin:/sbin` — it does not include Homebrew, `uv`, or
 npm-global install locations. Dagu's own steps use absolute paths (the venv
-python, `dagu` itself) so this mostly doesn't matter, except for the
-diagnosis step, which shells out to `claude`/`codex` **by name**. `setup.sh`
+python, `dagu` itself) so this mostly doesn't matter, except when diagnosis
+uses `claude` or `codex`, which it runs **by name**. `setup.sh`
 sets an explicit `PATH` in `com.distill.dagu.plist`'s
 `EnvironmentVariables` covering `$BIN_DIR` (default `~/.local/bin`),
 `/opt/homebrew/bin`, `/usr/local/bin`, `~/.cargo/bin`, and
@@ -172,7 +179,7 @@ covered directories).
 `start.sh` (the manual, non-launchd path) `set -a`-exports everything from
 `~/.distill/env` before sourcing it, so `dagu start-all` — which is spawned
 without inline `VAR=val` prefixes — still inherits `DAGU_USER`,
-`DAGU_PASSWORD`, and `DIAGNOSTIC_AGENT`.
+`DAGU_PASSWORD`, and the `DIAGNOSTIC_*` settings.
 
 ## Known version-drift risks
 
@@ -190,7 +197,7 @@ may need adjustment if you're on a different release:
   and `--save-every`, and that checkpoints are named `<iter>_adapters.safetensors`.
   Verify these flags against the installed `mlx-lm` version; if they've
   changed, the script just needs its checkpoint glob and flag names updated.
-- `scripts/diagnose_job.py`'s `find_agent_cli()` — assumes `claude -p
+- `scripts/diagnose_job.py`'s `find_agent()` — assumes `claude -p
   --output-format text` and `codex exec` are still the right non-interactive
   invocations for the installed CLI versions. Both tools' headless flags
   have changed across releases; this function is the only place to update.
@@ -202,6 +209,7 @@ may need adjustment if you're on a different release:
   MLX package changes.
 
 `DAGU_VERSION` and `PYTHON_VERSION` in `setup.sh` are pinned explicitly.
+`PYDANTIC_AI_VERSION` pins the agent runtime separately.
 Dagu 1.17.4 is the first compatible release line with the shared FIFO queue
 schema used by these DAGs. Bump either dependency deliberately rather than
 tracking `latest`.
