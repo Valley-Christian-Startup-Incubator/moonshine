@@ -1,0 +1,25 @@
+{
+  "baseline": "base",
+  "candidate": "distilled",
+  "unit": "40 held-out harmonic cases; two prompt paraphrases are clustered",
+  "fact_coverage": {
+    "mean_delta": 0.3625,
+    "bootstrap_95_ci": [
+      0.2875,
+      0.4375
+    ],
+    "paired_randomization_two_sided_p": 9.99990000099999e-06,
+    "clusters": 40,
+    "nonzero_clusters": 36
+  },
+  "full_case_rate": {
+    "mean_delta": 0.225,
+    "bootstrap_95_ci": [
+      0.125,
+      0.3375
+    ],
+    "paired_randomization_two_sided_p": 0.0003661662394727206,
+    "clusters": 40,
+    "nonzero_clusters": 13
+  }
+}

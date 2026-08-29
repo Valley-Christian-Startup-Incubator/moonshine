@@ -60,6 +60,15 @@ class DistillTrainTests(unittest.TestCase):
 		self.assertTrue(math.isfinite(ce.item()))
 		self.assertAlmostEqual(total.item(), ce.item() * 0.5, places=6)
 
+	def test_ce_only_loss_has_zero_kl_diagnostic(self):
+		logits = mx.array([[[2.0, 0.0], [0.0, 2.0]]])
+		targets = mx.array([[0, 1]])
+		mask = mx.array([[1.0, 1.0]])
+		total, kl, ce = distill_train.ce_only_loss(logits, targets, mask)
+		mx.eval(total, kl, ce)
+		self.assertAlmostEqual(kl.item(), 0.0, places=6)
+		self.assertAlmostEqual(total.item(), ce.item(), places=6)
+
 	def test_latest_checkpoint_uses_numeric_iteration_order(self):
 		with tempfile.TemporaryDirectory() as tmp:
 			adapter_dir = Path(tmp)

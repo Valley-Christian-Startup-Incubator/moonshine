@@ -77,6 +77,14 @@ train differently:
      iterations, same convention as `run_lora.sh`, so `run_distill.sh` can
      resume from the latest one on a Dagu retry.
 
+  Set `ALPHA=0` for the mandatory supervised-only control. That path skips
+  loading and running the teacher, so it is faster and uses less memory. Do
+  not judge logit distillation from training loss alone: compare the same
+  private holdout against the base student, the alpha-zero control, and the
+  nonzero-alpha adapter. The music-theory experiment in
+  `experiments/music_theory_reasoning/RESULT.md` is a concrete case where the
+  teacher's soft targets hurt even though the blended training loss fell.
+
   We don't precompute/store the teacher's logits — full vocab (~128k
   floats/token for a Llama-family model) over a whole training set is a
   lot of disk for little benefit versus just re-running the teacher

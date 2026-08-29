@@ -37,6 +37,11 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument(
+        "--disable-thinking",
+        action="store_true",
+        help="Explicitly disable reasoning channels in chat templates that support it",
+    )
     args = parser.parse_args()
 
     with open(args.input) as infile:
@@ -84,8 +89,14 @@ def main() -> None:
             prompt = row["prompt"]
             if tokenizer.chat_template is not None:
                 messages = [{"role": "user", "content": prompt}]
+                template_kwargs = (
+                    {"enable_thinking": False} if args.disable_thinking else {}
+                )
                 formatted = tokenizer.apply_chat_template(
-                    messages, add_generation_prompt=True, tokenize=False
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=False,
+                    **template_kwargs,
                 )
             else:
                 formatted = prompt

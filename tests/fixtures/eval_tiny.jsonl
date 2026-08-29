@@ -1,0 +1,4 @@
+{"id":"capital","prompt":"Reply with only the capital of Japan.","scorer":{"type":"exact","expected":"Tokyo"}}
+{"id":"arithmetic","prompt":"Reply with only the number: what is 19 * 7?","scorer":{"type":"numeric","expected":133}}
+{"id":"structured","prompt":"Return JSON with exactly one key named status whose value is ok.","scorer":{"type":"json","expected":{"status":"ok"}}}
+{"id":"policy","prompt":"State whether a fictional applicant is eligible. Include ELIGIBLE and do not include INELIGIBLE.","scorer":{"type":"contains","required":"ELIGIBLE","forbidden":"INELIGIBLE","case_sensitive":true}}

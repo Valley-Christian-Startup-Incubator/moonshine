@@ -62,6 +62,43 @@ port `8081` by default and can similarly be changed with `DAGU_PORT`.
 launchctl list | grep com.distill   # check whether the boot services are running
 ```
 
+## Automated distillation evaluation
+
+Keep a private evaluation JSONL outside the training set. Each row supplies
+an objective scorer:
+
+```json
+{"id":"case-1","prompt":"Reply with only the invoice total.","scorer":{"type":"numeric","expected":142.50,"tolerance":0.01}}
+{"id":"case-2","prompt":"Return the decision as JSON.","scorer":{"type":"json","expected":{"approved":true}}}
+```
+
+Run the same cases against the base student, its adapter, and the teacher:
+
+```bash
+~/.distill-venv/bin/python scripts/evaluate_distillation.py \
+  --eval-data private-eval.jsonl \
+  --training-data teacher-output.jsonl \
+  --student-model mlx-community/Meta-Llama-3.1-8B-Instruct-4bit \
+  --adapter-path ~/.distill/results/JOB_ID/adapters \
+  --teacher-model mlx-community/Meta-Llama-3.1-8B-Instruct \
+  --output-dir eval-results
+```
+
+The command uses greedy generation, rejects exact prompt leakage, resumes
+interrupted generation, and writes `report.md` plus machine-readable
+`report.json`. Supported scorer types are `exact`, `contains`, `regex`,
+`numeric`, and `json`. Add `--min-delta 0.05` to use a five-point improvement
+over the base student as a CI or script gate. Older distillation adapters that
+lack `adapter_config.json` use the trainer defaults. Pass `--adapter-rank`,
+`--adapter-layers`, and `--adapter-scale` if that job used non-default values.
+
+Always run a matched `ALPHA=0` control. Moonshine skips the teacher entirely
+for that control, so it runs faster and measures whether the teacher's logits
+help beyond supervised training on the same completions. The audited
+[music-theory experiment](experiments/music_theory_reasoning/RESULT.md) found
+that a Qwen 35B teacher's logits reduced held-out fact coverage from 94.0% to
+53.8%, even though both trained students beat the 17.5% base model.
+
 ## Job types
 
 | Type          | What it does                                   | Typical duration |

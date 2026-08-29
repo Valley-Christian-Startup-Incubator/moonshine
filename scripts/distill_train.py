@@ -132,6 +132,14 @@ def kl_and_ce_loss(student_logits, teacher_logits, targets, mask, temperature: f
 	return total, kl_loss, ce_loss
 
 
+def ce_only_loss(student_logits, targets, mask):
+	"""Pure supervised loss for alpha=0 runs that do not load a teacher."""
+	denom = mx.maximum(mask.sum(), 1)
+	ce_per_token = nn.losses.cross_entropy(student_logits, targets, reduction="none")
+	ce_loss = (ce_per_token * mask).sum() / denom
+	return ce_loss, mx.array(0.0), ce_loss
+
+
 def find_latest_checkpoint(adapter_dir: Path) -> Path | None:
 	checkpoints = sorted(
 		adapter_dir.glob("*_adapters.safetensors"),
@@ -161,6 +169,10 @@ def main() -> None:
 	parser.add_argument("--lora-layers", type=int, default=16)
 	parser.add_argument("--resume-adapter-file", default=None)
 	args = parser.parse_args()
+	if not 0.0 <= args.alpha <= 1.0:
+		parser.error("--alpha must be between 0 and 1")
+	if args.alpha > 0.0 and args.temperature <= 0.0:
+		parser.error("--temperature must be positive when --alpha is greater than 0")
 
 	adapter_dir = Path(args.adapter_path)
 	adapter_dir.mkdir(parents=True, exist_ok=True)
@@ -177,20 +189,26 @@ def main() -> None:
 		json.dump(adapter_config, f, indent=2)
 		f.write("\n")
 
-	print(f"Loading teacher: {args.teacher_model}", file=sys.stderr)
-	teacher, tokenizer = load(args.teacher_model)
-	teacher.freeze()
-	teacher.eval()
-
 	print(f"Loading student: {args.student_model}", file=sys.stderr)
 	student, student_tokenizer = load(args.student_model)
-
-	if student_tokenizer.vocab_size != tokenizer.vocab_size:
-		raise ValueError(
-			f"Teacher/student vocab size mismatch ({tokenizer.vocab_size} vs "
-			f"{student_tokenizer.vocab_size}) — logit distillation requires a "
-			"shared tokenizer. Use models from the same family."
-		)
+	teacher = None
+	tokenizer = student_tokenizer
+	if args.alpha > 0.0:
+		print(f"Loading teacher: {args.teacher_model}", file=sys.stderr)
+		teacher, teacher_tokenizer = load(args.teacher_model)
+		teacher.freeze()
+		teacher.eval()
+		if student_tokenizer.vocab_size != teacher_tokenizer.vocab_size:
+			raise ValueError(
+				f"Teacher/student vocab size mismatch ({teacher_tokenizer.vocab_size} vs "
+				f"{student_tokenizer.vocab_size}) — logit distillation requires a "
+				"shared tokenizer. Use models from the same family."
+			)
+		# Use the teacher tokenizer for the shared token-id sequence, preserving
+		# the established logit-distillation path.
+		tokenizer = teacher_tokenizer
+	else:
+		print("Alpha is 0; skipping teacher load and forward passes (pure SFT)", file=sys.stderr)
 
 	lora_config = {"rank": args.lora_rank, "dropout": 0.0, "scale": 20.0}
 	linear_to_lora_layers(student, args.lora_layers, lora_config)
@@ -234,6 +252,8 @@ def main() -> None:
 
 	def forward_loss(model, input_ids, targets, mask, teacher_logits):
 		logits = model(input_ids)[:, :-1, :]
+		if teacher_logits is None:
+			return ce_only_loss(logits, targets, mask)
 		return kl_and_ce_loss(logits, teacher_logits, targets, mask, args.temperature, args.alpha)
 
 	loss_and_grad_fn = nn.value_and_grad(student, forward_loss)
@@ -252,7 +272,9 @@ def main() -> None:
 		mask = build_loss_mask(batch_size, seq_len, lengths, prompt_lens)
 		targets = input_ids[:, 1:]
 
-		teacher_logits = mx.stop_gradient(teacher(input_ids)[:, :-1, :])
+		teacher_logits = None
+		if teacher is not None:
+			teacher_logits = mx.stop_gradient(teacher(input_ids)[:, :-1, :])
 
 		(loss, kl, ce), grads = loss_and_grad_fn(student, input_ids, targets, mask, teacher_logits)
 		optimizer.update(student, grads)
