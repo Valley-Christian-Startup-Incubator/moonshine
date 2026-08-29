@@ -180,6 +180,7 @@ def main() -> None:
 	print(f"Loading teacher: {args.teacher_model}", file=sys.stderr)
 	teacher, tokenizer = load(args.teacher_model)
 	teacher.freeze()
+	teacher.eval()
 
 	print(f"Loading student: {args.student_model}", file=sys.stderr)
 	student, student_tokenizer = load(args.student_model)
@@ -199,6 +200,7 @@ def main() -> None:
 	for _, module in student.named_modules():
 		if hasattr(module, "lora_a"):
 			module.unfreeze(keys=["lora_a", "lora_b"])
+	student.train()
 
 	resume_path = args.resume_adapter_file or find_latest_checkpoint(adapter_dir)
 	completed_iterations = 0
