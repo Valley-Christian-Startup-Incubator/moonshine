@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { untrack } from 'svelte';
 	import type { ActionData, PageData } from './$types';
-	import type { JobType, Team } from '$lib/types';
+	import { GLOSSARY_TERMS, type JobType, type Team } from '$lib/types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let selectedTeam = $state<Team>('FRC Robotics');
-	let selectedType = $state<JobType>('prompt-gen');
+	let selectedType = $state<JobType>(untrack(() => data.initialType));
 	let selectedFile = $state<File | null>(null);
 	let dragActive = $state(false);
 	let submitting = $state(false);
@@ -61,6 +62,70 @@
 		</p>
 	</div>
 
+	<section id="guide" class="card mt-5 scroll-mt-6 overflow-hidden" aria-labelledby="usual-workflow">
+		<div class="border-b border-border-subtle px-4 py-3">
+			<h2 id="usual-workflow" class="text-sm font-medium text-zinc-100">
+				The usual three-step workflow
+			</h2>
+			<p class="mt-1 text-sm text-zinc-400">
+				Start with the first step you still need. Most teams finish with Fine-tune a model.
+			</p>
+		</div>
+		<ol class="grid grid-cols-1 gap-px bg-border-subtle sm:grid-cols-3">
+			<li class="bg-bg-elevated p-4">
+				<button type="button" class="w-full text-left" onclick={() => selectJobType('prompt-gen')}>
+					<span class="text-xs font-medium text-blue-300">Step 1, optional</span>
+					<span class="mt-1 block text-sm font-medium text-zinc-100">Generate prompts</span>
+					<span class="mt-1 block text-xs leading-5 text-zinc-500">
+						Skip this if you already have a prompt file.
+					</span>
+				</button>
+			</li>
+			<li class="bg-bg-elevated p-4">
+				<button type="button" class="w-full text-left" onclick={() => selectJobType('teacher-gen')}>
+					<span class="text-xs font-medium text-blue-300">Step 2</span>
+					<span class="mt-1 block text-sm font-medium text-zinc-100">Generate teacher answers</span>
+					<span class="mt-1 block text-xs leading-5 text-zinc-500">
+						Create the examples used for training.
+					</span>
+				</button>
+			</li>
+			<li class="bg-bg-elevated p-4">
+				<button type="button" class="w-full text-left" onclick={() => selectJobType('finetune')}>
+					<span class="text-xs font-medium text-emerald-300">Step 3, recommended</span>
+					<span class="mt-1 block text-sm font-medium text-zinc-100">Fine-tune a model</span>
+					<span class="mt-1 block text-xs leading-5 text-zinc-500">
+						Teach the model from the saved examples.
+					</span>
+				</button>
+			</li>
+		</ol>
+		<div class="border-t border-border-subtle bg-bg-subtle px-4 py-3 text-xs leading-5 text-zinc-400">
+			<button type="button" class="font-medium text-amber-300 hover:underline" onclick={() => selectJobType('distill')}>
+				Distillation
+			</button>
+			is an advanced alternative to step 3.
+			<button type="button" class="ml-1 font-medium text-amber-300 hover:underline" onclick={() => selectJobType('quantize')}>
+				Make a model smaller
+			</button>
+			is a separate tool, not part of the training workflow.
+		</div>
+	</section>
+
+	<details class="card mt-5">
+		<summary class="cursor-pointer px-4 py-3 text-sm font-medium text-zinc-200">
+			Terms used in Moonshine
+		</summary>
+		<dl class="grid grid-cols-1 gap-x-6 gap-y-4 border-t border-border-subtle px-4 py-4 sm:grid-cols-2">
+			{#each GLOSSARY_TERMS as item (item.term)}
+				<div>
+					<dt class="text-sm font-medium text-zinc-200">{item.term}</dt>
+					<dd class="mt-1 text-xs leading-5 text-zinc-500">{item.definition}</dd>
+				</div>
+			{/each}
+		</dl>
+	</details>
+
 	{#if form?.error}
 		<div class="mt-6 rounded-md border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
 			{form.error}
@@ -101,7 +166,18 @@
 							? 'border-zinc-400 bg-bg-elevated text-zinc-100'
 							: 'border-border bg-bg-subtle text-zinc-400 hover:border-zinc-600'}"
 					>
-						<div class="font-medium">{jt.label}</div>
+						<div class="flex items-center justify-between gap-2">
+							<div class="font-medium">{jt.label}</div>
+							<span
+								class="rounded-full px-2 py-0.5 text-[10px] font-medium
+									{jt.badgeTone === 'recommended'
+									? 'bg-emerald-950 text-emerald-300'
+									: jt.badgeTone === 'advanced'
+										? 'bg-amber-950 text-amber-300'
+										: 'bg-zinc-800 text-zinc-400'}"
+								>{jt.badge}</span
+							>
+						</div>
 						<div class="mt-0.5 text-xs text-zinc-500">{jt.description}</div>
 					</button>
 				{/each}
@@ -167,14 +243,25 @@
 					id="file"
 					name="file"
 					type="file"
-					accept=".jsonl,application/json"
+					accept=".jsonl"
 					class="sr-only"
 					required
 					onchange={onFileInput}
 				/>
 				{#if activeJobType.inputExample}
 					<div class="mt-2 rounded-md border border-border-subtle bg-black/40 px-3 py-2">
-						<div class="text-xs text-zinc-500">One line should look like this:</div>
+						<div class="flex items-center justify-between gap-3">
+							<div class="text-xs text-zinc-500">One line should look like this:</div>
+							{#if activeJobType.exampleDownload}
+								<a
+									href={activeJobType.exampleDownload}
+									download
+									class="text-xs font-medium text-blue-300 hover:underline"
+								>
+									Download example file
+								</a>
+							{/if}
+						</div>
 						<code class="mt-1 block overflow-x-auto text-xs text-zinc-300"
 							>{activeJobType.inputExample}</code
 						>
@@ -206,8 +293,9 @@
 				</summary>
 				<div class="border-t border-border-subtle px-4 py-4">
 					<p class="mb-4 text-sm text-zinc-400">
-						The defaults are set for the shared Mac Studio. Change them only when your
-						instructor or experiment plan calls for it.
+						You do not need to understand or change these settings for a normal job. The
+						defaults are set for the shared Mac Studio. Change them only when your instructor
+						or experiment plan calls for it.
 					</p>
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						{#each activeFields as field (field.name)}

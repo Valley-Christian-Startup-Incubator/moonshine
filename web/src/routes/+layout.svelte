@@ -8,6 +8,7 @@
 
 	const navItems = [
 		{ href: '/', label: 'Submit' },
+		{ href: '/#guide', label: 'Guide' },
 		{ href: '/jobs', label: 'Jobs' },
 		{ href: '/admin', label: 'Admin' }
 	];

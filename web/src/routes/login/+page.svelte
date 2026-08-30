@@ -11,7 +11,9 @@
 
 <div class="mx-auto mt-16 max-w-sm">
 	<h1 class="text-xl font-semibold text-zinc-100">Distill Scheduler</h1>
-	<p class="mt-2 text-sm text-zinc-400">Enter the shared password to continue.</p>
+	<p class="mt-2 text-sm text-zinc-400">
+		Enter the shared password from your instructor. You do not need an individual account.
+	</p>
 	{#if form?.error}
 		<div class="mt-4 rounded-md border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
 			{form.error}

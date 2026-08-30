@@ -54,12 +54,16 @@
 </div>
 
 <div class="mt-4 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
-	<p>
-		<span class="font-medium">Queued</span> jobs are waiting for the shared Mac Studio.
-		<span class="font-medium">Running</span> jobs are being processed. You can close this page and
-		come back later.
+	<div class="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-4">
+		<div><span class="font-medium">Queued</span><span class="block text-xs text-blue-200/70">Waiting in line</span></div>
+		<div><span class="font-medium">Running</span><span class="block text-xs text-blue-200/70">Being processed</span></div>
+		<div><span class="font-medium">Complete</span><span class="block text-xs text-blue-200/70">Ready to download</span></div>
+		<div><span class="font-medium">Failed</span><span class="block text-xs text-blue-200/70">Needs review</span></div>
+	</div>
+	<p class="mt-3 border-t border-blue-900/70 pt-3 text-blue-200/80">
+		You can close this page while a job waits or runs. Select a row for its place in line, result,
+		or failure explanation.
 	</p>
-	<p class="mt-1 text-blue-200/80">Select a row to see its queue position, log, result, or failure explanation.</p>
 </div>
 
 <div class="card mt-4 overflow-x-auto">

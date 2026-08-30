@@ -67,6 +67,26 @@
 	<div class="mt-5 rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
 		<p class="font-medium">Your result is ready.</p>
 		<p class="mt-1 text-emerald-200/80">{jobType.output} {jobType.nextStep}</p>
+		{#if jobType.nextActions.length > 0}
+			<div class="mt-3 border-t border-emerald-900/70 pt-3">
+				<p class="text-xs font-medium uppercase tracking-wide text-emerald-300">
+					Download this result before continuing
+				</p>
+				<div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+					{#each jobType.nextActions as action (action.jobType)}
+						<a
+							href="/?jobType={action.jobType}"
+							class="rounded-md border border-emerald-800 bg-emerald-950/60 px-3 py-2 hover:border-emerald-700"
+						>
+							<span class="block font-medium text-emerald-100">{action.label}</span>
+							<span class="mt-0.5 block text-xs leading-5 text-emerald-200/70"
+								>{action.description}</span
+							>
+						</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 {/if}
 
@@ -135,7 +155,8 @@
 	<div class="card mt-6 p-4">
 		<h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">AI diagnosis</h2>
 		<p class="mt-2 text-sm text-zinc-400">
-			The diagnosis explains the likely cause. Suggested settings are a starting point, so review them before retrying.
+			Read the likely cause first. If it mentions a bad input file, a missing model, or incompatible
+			models, ask your instructor for help instead of retrying the same job.
 		</p>
 		{#if form?.error}
 			<div class="mt-3 rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs text-red-300">
@@ -147,25 +168,36 @@
 				class="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-black p-3 font-mono text-xs text-zinc-300">{data
 					.diagnosis.diagnosisMarkdown}</pre>
 			{#if data.diagnosis.suggestedRetryParams && Object.keys(data.diagnosis.suggestedRetryParams).length > 0}
-				<div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-border bg-bg-subtle px-3 py-2">
-					<div class="font-mono text-xs text-zinc-400">
-						{JSON.stringify(data.diagnosis.suggestedRetryParams)}
+				<div class="mt-3 rounded-md border border-border bg-bg-subtle px-3 py-3">
+					<p class="text-xs font-medium text-zinc-300">Suggested settings for a new attempt</p>
+					<dl class="mt-2 space-y-1.5">
+						{#each Object.entries(data.diagnosis.suggestedRetryParams) as [key, value] (key)}
+							<div class="flex items-center justify-between gap-4 text-xs">
+								<dt class="text-zinc-500">{parameterLabel(key)}</dt>
+								<dd class="font-mono text-zinc-300">{value}</dd>
+							</div>
+						{/each}
+					</dl>
+					<div class="mt-3 flex items-center justify-between gap-3 border-t border-border-subtle pt-3">
+						<p class="text-xs leading-5 text-zinc-500">
+							Retry only when the diagnosis says changing these settings may fix the problem.
+						</p>
+						<form
+							method="POST"
+							action="?/retry"
+							use:enhance={() => {
+								retrying = true;
+								return async ({ update }) => {
+									await update();
+									retrying = false;
+								};
+							}}
+						>
+							<button type="submit" class="btn-secondary shrink-0" disabled={retrying}>
+								{retrying ? 'Retrying…' : 'Retry with these settings'}
+							</button>
+						</form>
 					</div>
-					<form
-						method="POST"
-						action="?/retry"
-						use:enhance={() => {
-							retrying = true;
-							return async ({ update }) => {
-								await update();
-								retrying = false;
-							};
-						}}
-					>
-						<button type="submit" class="btn-secondary shrink-0" disabled={retrying}>
-							{retrying ? 'Retrying…' : 'Retry with suggested params'}
-						</button>
-					</form>
 				</div>
 			{/if}
 		{:else}

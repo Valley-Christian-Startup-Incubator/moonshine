@@ -30,8 +30,9 @@ Fine-tuning is the normal choice for most teams. Distillation is an advanced
 experiment that requires compatible teacher and student models. Making a model
 smaller is a separate job and does not require an uploaded file.
 
-JSONL means one JSON object per line. The dashboard shows an example for every
-job that needs a file. For example, a prompt file looks like this:
+JSONL means one JSON object per line. The dashboard defines the terms it uses
+and provides a downloadable example for every job that needs a file. For
+example, a prompt file looks like this:
 
 ```json
 {"prompt":"Explain how a gear ratio changes torque."}

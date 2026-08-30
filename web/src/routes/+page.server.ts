@@ -8,8 +8,12 @@ import { JOB_TYPES, JOB_TYPE_FIELDS, type JobType, type Team, type JobParams } f
 import { JOBS_DIR } from '$lib/server/env';
 import { submitJob } from '$lib/server/jobs';
 
-export const load: PageServerLoad = async () => {
-	return { teams: TEAMS, jobTypes: JOB_TYPES, fields: JOB_TYPE_FIELDS };
+export const load: PageServerLoad = async ({ url }) => {
+	const requestedType = url.searchParams.get('jobType');
+	const initialType = JOB_TYPES.some((jobType) => jobType.value === requestedType)
+		? (requestedType as JobType)
+		: 'prompt-gen';
+	return { teams: TEAMS, jobTypes: JOB_TYPES, fields: JOB_TYPE_FIELDS, initialType };
 };
 
 export const actions: Actions = {
@@ -29,6 +33,9 @@ export const actions: Actions = {
 		const jobType = JOB_TYPES.find((candidate) => candidate.value === type)!;
 		if (jobType.requiresInput && (!file || file.size === 0)) {
 			return fail(400, { error: `Please attach the ${jobType.inputLabel.toLowerCase()}.` });
+		}
+		if (jobType.requiresInput && file && !file.name.toLowerCase().endsWith('.jsonl')) {
+			return fail(400, { error: 'Please upload a file whose name ends in .jsonl.' });
 		}
 		if (file && file.size > MAX_UPLOAD_BYTES) {
 			return fail(400, { error: 'File exceeds the 500MB upload limit.' });
