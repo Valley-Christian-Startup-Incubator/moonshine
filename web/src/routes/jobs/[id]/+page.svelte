@@ -4,10 +4,16 @@
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
 	import { statusBadgeClass, formatDuration, formatTimestamp } from '$lib/format';
+	import { JOB_TYPES, JOB_TYPE_FIELDS } from '$lib/types';
 	import { pushToast } from '$lib/toast.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let retrying = $state(false);
+	const jobType = $derived(JOB_TYPES.find((candidate) => candidate.value === data.job.type)!);
+
+	function parameterLabel(name: string): string {
+		return JOB_TYPE_FIELDS[data.job.type].find((field) => field.name === name)?.label ?? name;
+	}
 
 	$effect(() => {
 		if ($page.url.searchParams.get('submitted') === '1') {
@@ -41,12 +47,28 @@
 			<h1 class="font-mono text-lg font-semibold text-zinc-100">{data.job.id}</h1>
 			<span class={statusBadgeClass(data.job.status)}>{data.job.status}</span>
 		</div>
-		<p class="mt-1 text-sm text-zinc-400">{data.job.team} · {data.job.type}</p>
+		<p class="mt-1 text-sm text-zinc-400">{data.job.team} · {jobType.label}</p>
 	</div>
 	{#if data.job.status === 'complete'}
 		<a href="/jobs/{data.job.id}/download" class="btn-primary">Download result</a>
 	{/if}
 </div>
+
+{#if data.job.status === 'queued'}
+	<div class="mt-5 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
+		This job is waiting for the Mac Studio. You can close this page and return later.
+		{#if data.job.queuePosition} It is number {data.job.queuePosition} in line.{/if}
+	</div>
+{:else if data.job.status === 'running'}
+	<div class="mt-5 rounded-lg border border-amber-900 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
+		This job is running. The page refreshes automatically, and you can safely leave and return later.
+	</div>
+{:else if data.job.status === 'complete'}
+	<div class="mt-5 rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
+		<p class="font-medium">Your result is ready.</p>
+		<p class="mt-1 text-emerald-200/80">{jobType.output} {jobType.nextStep}</p>
+	</div>
+{/if}
 
 <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
 	<div class="card p-4">
@@ -80,15 +102,22 @@
 	</div>
 
 	<div class="card p-4">
-		<h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">Parameters</h2>
+		<h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">Job settings</h2>
 		<dl class="mt-3 space-y-2 text-sm">
-			<div class="flex justify-between">
-				<dt class="text-zinc-500">Input file</dt>
-				<dd class="truncate font-mono text-xs text-zinc-300">{data.job.inputFile}</dd>
-			</div>
+			{#if jobType.requiresInput}
+				<div class="flex justify-between gap-4">
+					<dt class="text-zinc-500">Input file</dt>
+					<dd class="truncate font-mono text-xs text-zinc-300">{data.job.inputFile}</dd>
+				</div>
+			{:else}
+				<div class="flex justify-between">
+					<dt class="text-zinc-500">Input file</dt>
+					<dd class="text-xs text-zinc-300">Not required</dd>
+				</div>
+			{/if}
 			{#each Object.entries(data.job.params) as [key, value] (key)}
 				<div class="flex justify-between">
-					<dt class="text-zinc-500">{key}</dt>
+					<dt class="text-zinc-500">{parameterLabel(key)}</dt>
 					<dd class="font-mono text-xs text-zinc-300">{value}</dd>
 				</div>
 			{/each}
@@ -105,6 +134,9 @@
 {#if data.job.status === 'failed'}
 	<div class="card mt-6 p-4">
 		<h2 class="text-xs font-medium uppercase tracking-wide text-zinc-500">AI diagnosis</h2>
+		<p class="mt-2 text-sm text-zinc-400">
+			The diagnosis explains the likely cause. Suggested settings are a starting point, so review them before retrying.
+		</p>
 		{#if form?.error}
 			<div class="mt-3 rounded-md border border-red-800 bg-red-950 px-3 py-2 text-xs text-red-300">
 				{form.error}

@@ -26,21 +26,25 @@ export const actions: Actions = {
 		if (!type || !(type in JOB_TYPE_FIELDS)) {
 			return fail(400, { error: 'Please select a valid job type.' });
 		}
-		if (!file || file.size === 0) {
-			return fail(400, { error: 'Please attach an input file.' });
+		const jobType = JOB_TYPES.find((candidate) => candidate.value === type)!;
+		if (jobType.requiresInput && (!file || file.size === 0)) {
+			return fail(400, { error: `Please attach the ${jobType.inputLabel.toLowerCase()}.` });
 		}
-		if (file.size > MAX_UPLOAD_BYTES) {
+		if (file && file.size > MAX_UPLOAD_BYTES) {
 			return fail(400, { error: 'File exceeds the 500MB upload limit.' });
 		}
 
 		const jobId = nanoid(10);
-		const jobDir = path.join(JOBS_DIR, jobId);
-		await mkdir(jobDir, { recursive: true });
+		let inputFile = '';
+		if (jobType.requiresInput && file) {
+			const jobDir = path.join(JOBS_DIR, jobId);
+			await mkdir(jobDir, { recursive: true });
 
-		const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-		const inputFile = path.join(jobDir, safeName);
-		const buf = Buffer.from(await file.arrayBuffer());
-		await writeFile(inputFile, buf);
+			const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+			inputFile = path.join(jobDir, safeName);
+			const buf = Buffer.from(await file.arrayBuffer());
+			await writeFile(inputFile, buf);
+		}
 
 		const params: JobParams = {};
 		for (const field of JOB_TYPE_FIELDS[type]) {

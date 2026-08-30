@@ -19,6 +19,10 @@
 		})
 	);
 
+	function jobTypeLabel(value: string): string {
+		return data.jobTypes.find((jobType) => jobType.value === value)?.label ?? value;
+	}
+
 	$effect(() => {
 		const interval = setInterval(() => {
 			invalidateAll();
@@ -49,6 +53,15 @@
 	</div>
 </div>
 
+<div class="mt-4 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
+	<p>
+		<span class="font-medium">Queued</span> jobs are waiting for the shared Mac Studio.
+		<span class="font-medium">Running</span> jobs are being processed. You can close this page and
+		come back later.
+	</p>
+	<p class="mt-1 text-blue-200/80">Select a row to see its queue position, log, result, or failure explanation.</p>
+</div>
+
 <div class="card mt-4 overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
@@ -69,7 +82,7 @@
 				>
 					<td class="px-4 py-3 font-mono text-xs text-zinc-300">{job.id}</td>
 					<td class="px-4 py-3 text-zinc-300">{job.team}</td>
-					<td class="px-4 py-3 text-zinc-400">{job.type}</td>
+					<td class="px-4 py-3 text-zinc-400">{jobTypeLabel(job.type)}</td>
 					<td class="px-4 py-3"><span class={statusBadgeClass(job.status)}>{job.status}</span></td>
 					<td class="px-4 py-3 text-zinc-400">{formatTimestamp(job.submittedAt)}</td>
 					<td class="px-4 py-3 font-mono text-xs text-zinc-400"

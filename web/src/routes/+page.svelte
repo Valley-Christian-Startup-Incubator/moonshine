@@ -1,23 +1,34 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import type { ActionData, PageData } from './$types';
-	import type { JobType } from '$lib/types';
+	import type { JobType, Team } from '$lib/types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
-	let selectedTeam = $state(data.teams[0]);
-	let selectedType = $state<JobType>(data.jobTypes[0].value);
+	let selectedTeam = $state<Team>('FRC Robotics');
+	let selectedType = $state<JobType>('prompt-gen');
 	let selectedFile = $state<File | null>(null);
 	let dragActive = $state(false);
 	let submitting = $state(false);
+	let fileInput = $state<HTMLInputElement>();
 
 	const activeFields = $derived(data.fields[selectedType]);
+	const activeJobType = $derived(data.jobTypes.find((jobType) => jobType.value === selectedType)!);
+
+	function selectJobType(jobType: JobType) {
+		selectedType = jobType;
+		selectedFile = null;
+		if (fileInput) fileInput.value = '';
+	}
 
 	function onDrop(e: DragEvent) {
 		e.preventDefault();
 		dragActive = false;
 		const f = e.dataTransfer?.files?.[0];
-		if (f) selectedFile = f;
+		if (f) {
+			selectedFile = f;
+			if (fileInput && e.dataTransfer) fileInput.files = e.dataTransfer.files;
+		}
 	}
 
 	function onFileInput(e: Event) {
@@ -39,8 +50,16 @@
 <div class="mx-auto max-w-2xl">
 	<h1 class="text-xl font-semibold text-zinc-100">Submit a job</h1>
 	<p class="mt-1 text-sm text-zinc-400">
-		Jobs run serially on the Mac Studio. Pick a team, a job type, drop your input file, and go.
+		Choose what you want to do and follow the file instructions below. Jobs run one at a time on
+		the shared Mac Studio.
 	</p>
+
+	<div class="mt-5 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
+		<p class="font-medium">You can leave after submitting.</p>
+		<p class="mt-1 text-blue-200/80">
+			Open Jobs later to check your place in line, watch progress, and download the result.
+		</p>
+	</div>
 
 	{#if form?.error}
 		<div class="mt-6 rounded-md border border-red-800 bg-red-950 px-4 py-3 text-sm text-red-300">
@@ -75,7 +94,8 @@
 				{#each data.jobTypes as jt (jt.value)}
 					<button
 						type="button"
-						onclick={() => (selectedType = jt.value)}
+						onclick={() => selectJobType(jt.value)}
+						aria-pressed={selectedType === jt.value}
 						class="rounded-md border px-3 py-2.5 text-left text-sm transition-colors
 							{selectedType === jt.value
 							? 'border-zinc-400 bg-bg-elevated text-zinc-100'
@@ -89,58 +109,126 @@
 			<input type="hidden" name="jobType" value={selectedType} />
 		</div>
 
-		<div>
-			<span class="label">Input file</span>
-			<label
-				for="file"
-				ondragover={(e) => {
-					e.preventDefault();
-					dragActive = true;
-				}}
-				ondragleave={() => (dragActive = false)}
-				ondrop={onDrop}
-				class="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-10 text-center transition-colors
-					{dragActive ? 'border-zinc-400 bg-bg-elevated' : 'border-border bg-bg-subtle'}"
-			>
-				{#if selectedFile}
-					<div class="font-mono text-sm text-zinc-200">{selectedFile.name}</div>
-					<div class="mt-1 text-xs text-zinc-500">{formatBytes(selectedFile.size)}</div>
-				{:else}
-					<div class="text-sm text-zinc-400">Drag & drop a file here, or click to browse</div>
-					<div class="mt-1 text-xs text-zinc-600">JSONL input · up to 500MB</div>
-				{/if}
-			</label>
-			<input
-				id="file"
-				name="file"
-				type="file"
-				class="sr-only"
-				required
-				onchange={onFileInput}
-			/>
+		<div class="card overflow-hidden">
+			<div class="border-b border-border-subtle px-4 py-3">
+				<p class="text-sm font-medium text-zinc-100">{activeJobType.label}</p>
+				<p class="mt-1 text-sm leading-6 text-zinc-400">{activeJobType.description}</p>
+			</div>
+			<dl class="grid grid-cols-1 gap-px bg-border-subtle sm:grid-cols-2">
+				<div class="bg-bg-elevated px-4 py-3">
+					<dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">Before you start</dt>
+					<dd class="mt-1 text-sm leading-5 text-zinc-300">{activeJobType.prerequisite}</dd>
+				</div>
+				<div class="bg-bg-elevated px-4 py-3">
+					<dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">What you get</dt>
+					<dd class="mt-1 text-sm leading-5 text-zinc-300">{activeJobType.output}</dd>
+				</div>
+				<div class="bg-bg-elevated px-4 py-3">
+					<dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">After it finishes</dt>
+					<dd class="mt-1 text-sm leading-5 text-zinc-300">{activeJobType.nextStep}</dd>
+				</div>
+				<div class="bg-bg-elevated px-4 py-3">
+					<dt class="text-xs font-medium uppercase tracking-wide text-zinc-500">Typical time</dt>
+					<dd class="mt-1 text-sm leading-5 text-zinc-300">{activeJobType.duration}</dd>
+				</div>
+			</dl>
+			{#if activeJobType.warning}
+				<p class="border-t border-amber-900/70 bg-amber-950/40 px-4 py-3 text-sm text-amber-200">
+					{activeJobType.warning}
+				</p>
+			{/if}
 		</div>
 
-		{#if activeFields.length > 0}
+		{#if activeJobType.requiresInput}
 			<div>
-				<span class="label">Parameters</span>
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					{#each activeFields as field (field.name)}
-						<div>
-							<label class="mb-1 block text-xs text-zinc-500" for={field.name}
-								>{field.label}</label
-							>
-							<input
-								id={field.name}
-								name={field.name}
-								type={field.type}
-								step={field.step}
-								value={field.default}
-								class="input font-mono text-xs"
-							/>
-						</div>
-					{/each}
+				<span class="label">{activeJobType.inputLabel}</span>
+				<p class="mb-2 text-sm text-zinc-400">{activeJobType.inputHelp}</p>
+				<label
+					for="file"
+					ondragover={(e) => {
+						e.preventDefault();
+						dragActive = true;
+					}}
+					ondragleave={() => (dragActive = false)}
+					ondrop={onDrop}
+					class="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-10 text-center transition-colors
+						{dragActive ? 'border-zinc-400 bg-bg-elevated' : 'border-border bg-bg-subtle'}"
+				>
+					{#if selectedFile}
+						<div class="font-mono text-sm text-zinc-200">{selectedFile.name}</div>
+						<div class="mt-1 text-xs text-zinc-500">{formatBytes(selectedFile.size)}</div>
+					{:else}
+						<div class="text-sm text-zinc-400">Drag & drop a file here, or click to browse</div>
+						<div class="mt-1 text-xs text-zinc-600">JSONL file, up to 500MB</div>
+					{/if}
+				</label>
+				<input
+					bind:this={fileInput}
+					id="file"
+					name="file"
+					type="file"
+					accept=".jsonl,application/json"
+					class="sr-only"
+					required
+					onchange={onFileInput}
+				/>
+				{#if activeJobType.inputExample}
+					<div class="mt-2 rounded-md border border-border-subtle bg-black/40 px-3 py-2">
+						<div class="text-xs text-zinc-500">One line should look like this:</div>
+						<code class="mt-1 block overflow-x-auto text-xs text-zinc-300"
+							>{activeJobType.inputExample}</code
+						>
+					</div>
+				{/if}
 				</div>
+		{:else}
+			<div
+				class="rounded-md border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200"
+			>
+				No upload is needed. Confirm the model under Advanced settings, then submit.
 			</div>
+		{/if}
+
+		{#if activeFields.length > 0}
+			<details class="card group">
+				<summary
+					class="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-200"
+				>
+					<span class="flex items-center justify-between gap-3">
+						<span>Advanced settings</span>
+						<span class="text-xs font-normal text-zinc-500 group-open:hidden"
+							>Recommended defaults are selected</span
+						>
+						<span class="hidden text-xs font-normal text-zinc-500 group-open:inline"
+							>Hide settings</span
+						>
+					</span>
+				</summary>
+				<div class="border-t border-border-subtle px-4 py-4">
+					<p class="mb-4 text-sm text-zinc-400">
+						The defaults are set for the shared Mac Studio. Change them only when your
+						instructor or experiment plan calls for it.
+					</p>
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+						{#each activeFields as field (field.name)}
+							<div>
+								<label class="mb-1 block text-xs font-medium text-zinc-300" for={field.name}
+									>{field.label}</label
+								>
+								<input
+									id={field.name}
+									name={field.name}
+									type={field.type}
+									step={field.step}
+									value={field.default}
+									class="input font-mono text-xs"
+								/>
+								<p class="mt-1.5 text-xs leading-5 text-zinc-500">{field.help}</p>
+							</div>
+						{/each}
+					</div>
+				</div>
+			</details>
 		{/if}
 
 		<button type="submit" class="btn-primary w-full" disabled={submitting}>
