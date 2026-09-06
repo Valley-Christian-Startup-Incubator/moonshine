@@ -160,17 +160,17 @@ export const JOB_TYPES: JobTypeDef[] = [
 		exampleDownload: '/examples/prompts.jsonl',
 		prerequisite: 'A prompt file you created yourself or downloaded from Generate prompts.',
 		output: 'A JSONL file containing each prompt and the teacher model\'s answer.',
-		nextStep: 'Use the downloaded file to Fine-tune a model or run a Distillation experiment.',
+		nextStep: 'Download and review the Q&A, then use Split in the Lab to save separate training and validation files. Train only on the training file.',
 		nextActions: [
 			{
 				jobType: 'finetune',
 				label: 'Fine-tune a model',
-				description: 'Recommended. Train from the saved prompt-and-answer examples.'
+				description: 'First freeze a split in the Lab. Upload only the training file here.'
 			},
 			{
 				jobType: 'distill',
-				label: 'Run a distillation experiment',
-				description: 'Advanced. Compare teacher and student models during training.'
+				label: 'Distill token scores',
+				description: 'Train on the training split using the teacher’s next-token scores.'
 			}
 		],
 		duration: 'A few minutes to several hours, depending on the number of prompts.'
@@ -194,8 +194,8 @@ export const JOB_TYPES: JobTypeDef[] = [
 	},
 	{
 		value: 'distill',
-		label: 'Run a distillation experiment',
-		description: 'Compare a teacher and student model during training. Intended for advanced experiments.',
+		label: 'Distill token scores',
+		description: 'Teach a student from the teacher’s answers and its scores for possible next tokens.',
 		badge: 'Advanced alternative',
 		badgeTone: 'advanced',
 		requiresInput: true,

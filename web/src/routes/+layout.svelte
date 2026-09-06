@@ -7,8 +7,7 @@
 	const toasts = toastState();
 
 	const navItems = [
-		{ href: '/', label: 'Submit' },
-		{ href: '/#guide', label: 'Guide' },
+		{ href: '/', label: 'Lab' },
 		{ href: '/jobs', label: 'Jobs' },
 		{ href: '/admin', label: 'Admin' }
 	];
@@ -16,10 +15,12 @@
 
 <div class="min-h-screen bg-bg">
 	<header class="border-b border-border-subtle bg-bg-subtle">
-		<div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+		<div
+			class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6"
+		>
 			<a href="/" class="flex items-center gap-2 font-semibold text-zinc-100">
 				<span class="font-mono text-sm text-zinc-500">◆</span>
-				Distill Scheduler
+				Moonshine
 			</a>
 			<nav class="flex gap-1">
 				{#each navItems as item (item.href)}
@@ -34,7 +35,10 @@
 					</a>
 				{/each}
 				<form method="POST" action="/logout">
-					<button type="submit" class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200">
+					<button
+						type="submit"
+						class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200"
+					>
 						Sign out
 					</button>
 				</form>

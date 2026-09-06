@@ -9,11 +9,16 @@ a time (strict FIFO), so everyone shares the machine fairly.
 You do not need the command line or access to the Mac Studio. Open the web
 address your instructor gives you, enter the shared password, then:
 
-1. Choose your team.
-2. Choose a job type. The dashboard explains the file it needs and what it produces.
-3. Upload the requested JSONL file, if the job needs one.
-4. Leave the advanced settings unchanged unless your instructor gives you different values.
-5. Submit the job. You can close the page and return to **Jobs** later.
+1. Open **Lab**. Choose **Quick tour** for highlighted controls, or an info icon for an explanation.
+2. **Generate:** start from topics or upload your own questions for teacher answers.
+   Browse samples before submitting, and download completed results from **Jobs**.
+3. **Split:** upload the teacher Q&A in your browser. Choose 80/20, 85/15, or
+   90/10 training/validation and freeze the split. Download both files and the
+   split record before leaving the page.
+4. **Train:** choose Qwen 4B or 8B and upload only the training file. Model
+   selection is visible; additional training settings are collapsed.
+5. **Evaluate:** use the same saved validation questions for every comparison.
+   This stage explains the intended metrics; it does not run an evaluation yet.
 
 Jobs run one at a time. A **queued** job is waiting for the shared Mac Studio;
 a **running** job is being processed. Open any job to see its place in line,
@@ -22,13 +27,43 @@ progress, result, or failure explanation.
 The usual workflow is:
 
 ```text
-Generate prompts → Generate teacher answers → Fine-tune a model
-                                           ↘ Run a distillation experiment
+Generate teacher Q&A → Split → Train student → Evaluate on validation
 ```
 
-Fine-tuning is the normal choice for most teams. Distillation is an advanced
-experiment that requires compatible teacher and student models. Making a model
-smaller is a separate job and does not require an uploaded file.
+**Train from answers** teaches the student to predict the teacher's saved text.
+**Distill token scores** also teaches it from the teacher's next-token
+probabilities and requires matching tokenizers. **Reduce model size** exposes
+bits per weight: compare each bit depth on the same validation file.
+
+Browser review and splitting accept files up to 20 MB. Splitting uses fixed seed
+42 and groups repeated questions together after normalizing case and whitespace,
+so those questions cannot cross the split boundary. The split stays locked while
+the page is open; the downloaded files are the record to reuse across sessions.
+This does not enforce dataset separation in the existing training backend.
+
+The web submission form accepts only configured local Qwen paths, with no hub
+fallback. In **Generate**, the teacher panel shows its source status. Choose
+**Teacher answers** to set maximum answer length and answer variety. Each info
+icon explains the control and how to use it.
+
+To set up the teacher, an instructor opens **Configure teacher**, signs in, and
+enters the full path to the installed Qwen 30B MLX folder on the computer running
+Moonshine. **Check & save teacher** checks the Qwen configuration, tokenizer,
+and weight files, then saves only the folder reference in
+`$DISTILL_HOME/teacher-model.json` (normally `~/.distill/teacher-model.json`).
+It does not copy weights, download models, run inference, or verify the parameter
+count. The instructor must select the approved 30B model.
+
+Saved teacher settings take precedence over `MOONSHINE_QWEN_30B_PATH` in the web
+process environment. Operators still configure student directories with
+`MOONSHINE_QWEN_4B_PATH` and `MOONSHINE_QWEN_8B_PATH`. An unconfigured model
+cannot be submitted. Ollama model blobs are not MLX training directories.
+
+Training and quantization still run on the shared Studio and store weights
+there. Student-machine training and weight transfer are not implemented by this
+UI update. The evaluation page describes top-1 next-token agreement (higher is
+better) and perplexity on teacher answer tokens (lower is better); the existing
+evaluation script below scores answers instead of these token metrics.
 
 JSONL means one JSON object per line. The dashboard defines the terms it uses
 and provides a downloadable example for every job that needs a file. For
