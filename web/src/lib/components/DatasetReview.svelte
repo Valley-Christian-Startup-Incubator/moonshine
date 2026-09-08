@@ -153,8 +153,22 @@
 
 {#if split}
 	<div class="mt-5">
-		<label for="split-file" class="label">Teacher Q&A file</label><input
+		<label for="split-file" class="label">Teacher Q&A file</label>
+		<div id="split-file-help" class="mb-3 space-y-2 text-sm text-zinc-400">
+			<p>Upload the output downloaded from a completed <strong>Teacher answers</strong>
+				job. This step separates those examples into training and validation files.</p>
+			<p>Use a plain-text <code>.jsonl</code> file with one JSON object per line.
+				Each needs nonempty <code>"prompt"</code> (question) and
+				<code>"completion"</code> (teacher answer) strings:</p>
+			<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"prompt":"What is torque?","completion":"Torque is a turning force."}'}</code></pre>
+			<p>Use double quotes, with no commas between lines or surrounding square brackets.
+				Write line breaks inside an answer as <code>\n</code>. Include at least two
+				different questions so both splits can contain examples.</p>
+			<a href="/examples/training.jsonl" class="text-xs underline">Download Q&A example</a>
+		</div>
+		<input
 			id="split-file"
+			aria-describedby="split-file-help"
 			type="file"
 			accept=".jsonl"
 			disabled={!!frozen}
