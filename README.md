@@ -47,12 +47,13 @@ fallback. In **Generate**, the teacher panel shows its source status. Choose
 icon explains the control and how to use it.
 
 To set up the teacher, an instructor opens **Configure teacher**, signs in, and
-enters the full path to the installed Qwen 30B MLX folder on the computer running
+enters the full path to the installed Qwen MLX folder on the computer running
 Moonshine. **Check & save teacher** checks the Qwen configuration, tokenizer,
 and weight files, then saves only the folder reference in
 `$DISTILL_HOME/teacher-model.json` (normally `~/.distill/teacher-model.json`).
 It does not copy weights, download models, run inference, or verify the parameter
-count. The instructor must select the approved 30B model.
+count. The instructor must select the approved model. Teacher labels follow the selected
+folder name (or the model name for a Hugging Face cache snapshot).
 
 Saved teacher settings take precedence over `MOONSHINE_QWEN_30B_PATH` in the web
 process environment. Operators still configure student directories with

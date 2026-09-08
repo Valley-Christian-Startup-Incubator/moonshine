@@ -36,11 +36,13 @@ export type TeacherSettingsSource = 'saved' | 'environment' | 'none';
 
 export interface TeacherSettings {
 	path: string;
+	label: string;
 	source: TeacherSettingsSource;
 	error?: string;
 }
 
 const TEACHER_CONFIG_FILENAME = 'teacher-model.json';
+const DEFAULT_TEACHER_LABEL = 'Teacher model';
 const TEACHER_DIRECTORY_HINT =
 	'Expected a local Qwen MLX directory with config.json, tokenizer.json, and a usable safetensors checkpoint.';
 
@@ -172,6 +174,24 @@ async function validateTeacherModelPath(rawPath: string): Promise<string> {
 	return modelPath;
 }
 
+function teacherLabelForPath(modelPath: string): string {
+	const normalizedPath = path.normalize(modelPath);
+	const segments = normalizedPath.split(path.sep).filter(Boolean);
+	const snapshotsIndex = segments.lastIndexOf('snapshots');
+	const cacheDirectory = snapshotsIndex > 0 ? segments[snapshotsIndex - 1] : undefined;
+
+	if (snapshotsIndex === segments.length - 2 && cacheDirectory?.startsWith('models--')) {
+		const repository = cacheDirectory.slice('models--'.length);
+		const separator = repository.indexOf('--');
+		if (separator >= 0) {
+			const modelName = repository.slice(separator + 2);
+			if (modelName) return modelName;
+		}
+	}
+
+	return path.basename(normalizedPath) || DEFAULT_TEACHER_LABEL;
+}
+
 type StoredTeacherConfig =
 	| { kind: 'missing' }
 	| { kind: 'invalid'; error: string }
@@ -204,10 +224,12 @@ async function settingsForPath(
 	source: Exclude<TeacherSettingsSource, 'none'>
 ): Promise<TeacherSettings> {
 	try {
-		return { path: await validateTeacherModelPath(modelPath), source };
+		const validatedPath = await validateTeacherModelPath(modelPath);
+		return { path: validatedPath, label: teacherLabelForPath(validatedPath), source };
 	} catch (error) {
 		return {
 			path: modelPath,
+			label: DEFAULT_TEACHER_LABEL,
 			source,
 			error: error instanceof Error ? error.message : String(error)
 		};
@@ -217,12 +239,12 @@ async function settingsForPath(
 export async function getTeacherSettings(): Promise<TeacherSettings> {
 	const stored = await readStoredTeacherConfig();
 	if (stored.kind === 'invalid') {
-		return { path: '', source: 'none', error: stored.error };
+		return { path: '', label: DEFAULT_TEACHER_LABEL, source: 'none', error: stored.error };
 	}
 	if (stored.kind === 'path') return settingsForPath(stored.path, 'saved');
 
 	const environmentPath = process.env.MOONSHINE_QWEN_30B_PATH?.trim();
-	if (!environmentPath) return { path: '', source: 'none' };
+	if (!environmentPath) return { path: '', label: DEFAULT_TEACHER_LABEL, source: 'none' };
 	return settingsForPath(environmentPath, 'environment');
 }
 
@@ -269,7 +291,7 @@ export async function getModelPresetConfig(): Promise<ModelPresetConfig> {
 				{ id: 'qwen-4b', label: 'Qwen 4B', available: qwen4b !== undefined },
 				{ id: 'qwen-8b', label: 'Qwen 8B', available: qwen8b !== undefined }
 			],
-			teacher: { label: 'Qwen 30B', available: qwen30b !== undefined }
+			teacher: { label: teacherSettings.label, available: qwen30b !== undefined }
 		},
 		paths: {
 			students: { 'qwen-4b': qwen4b, 'qwen-8b': qwen8b },

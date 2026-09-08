@@ -31,7 +31,7 @@ const unavailablePresets = {
 		{ id: 'qwen-4b', label: 'Qwen 4B', available: false },
 		{ id: 'qwen-8b', label: 'Qwen 8B', available: false }
 	],
-	teacher: { label: 'Qwen 30B', available: false }
+	teacher: { label: 'Teacher model', available: false }
 };
 
 async function makeModelFixture(root, name, { modelType = 'qwen3', checkpoint = true } = {}) {
@@ -60,6 +60,11 @@ test('model presets expose only configured local model availability', async () =
 	try {
 		for (const key of ENV_KEYS) delete process.env[key];
 		process.env.DISTILL_HOME = path.join(tempRoot, 'distill');
+		assert.deepEqual(await getTeacherSettings(), {
+			path: '',
+			label: 'Teacher model',
+			source: 'none'
+		});
 		assert.deepEqual(await getModelPresets(), unavailablePresets);
 
 		process.env.MOONSHINE_QWEN_4B_PATH = 'mlx-community/Qwen-4B';
@@ -89,7 +94,7 @@ test('model presets expose only configured local model availability', async () =
 				{ id: 'qwen-4b', label: 'Qwen 4B', available: true },
 				{ id: 'qwen-8b', label: 'Qwen 8B', available: true }
 			],
-			teacher: { label: 'Qwen 30B', available: true }
+			teacher: { label: 'qwen-30b', available: true }
 		});
 		assert.equal(JSON.stringify(publicModelPresets).includes(tempRoot), false);
 	} finally {
@@ -115,6 +120,7 @@ test('teacher path saves atomically and takes precedence over the environment', 
 
 		assert.deepEqual(await getTeacherSettings(), {
 			path: environmentPath,
+			label: 'environment-teacher',
 			source: 'environment'
 		});
 
@@ -122,12 +128,18 @@ test('teacher path saves atomically and takes precedence over the environment', 
 		const configPath = path.join(process.env.DISTILL_HOME, 'teacher-model.json');
 		assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')), { path: savedPath });
 		assert.equal((await stat(configPath)).mode & 0o777, 0o600);
-		assert.deepEqual(await getTeacherSettings(), { path: savedPath, source: 'saved' });
+		assert.deepEqual(await getTeacherSettings(), {
+			path: savedPath,
+			label: 'saved-teacher',
+			source: 'saved'
+		});
+		assert.equal((await getModelPresetConfig()).modelPresets.teacher.label, 'saved-teacher');
 		assert.equal((await getModelPresetConfig()).paths.teacher, savedPath);
 
 		await rm(path.join(savedPath, 'model.safetensors'));
 		const brokenSettings = await getTeacherSettings();
 		assert.equal(brokenSettings.path, savedPath);
+		assert.equal(brokenSettings.label, 'Teacher model');
 		assert.equal(brokenSettings.source, 'saved');
 		assert.match(brokenSettings.error, /Expected a local Qwen MLX directory/);
 		assert.equal((await getModelPresetConfig()).paths.teacher, undefined);
@@ -203,7 +215,11 @@ test('teacher validation accepts symlinked local model files', async () => {
 			await symlink(path.join(sourcePath, filename), path.join(linkedPath, filename));
 		}
 		assert.equal(await saveTeacherModelPath(linkedPath), linkedPath);
-		assert.deepEqual(await getTeacherSettings(), { path: linkedPath, source: 'saved' });
+		assert.deepEqual(await getTeacherSettings(), {
+			path: linkedPath,
+			label: 'linked-model',
+			source: 'saved'
+		});
 	} finally {
 		for (const [key, value] of savedEnv) {
 			if (value === undefined) delete process.env[key];
@@ -226,9 +242,43 @@ test('corrupt saved teacher settings fail closed instead of using the environmen
 
 		const settings = await getTeacherSettings();
 		assert.equal(settings.path, '');
+		assert.equal(settings.label, 'Teacher model');
 		assert.equal(settings.source, 'none');
 		assert.match(settings.error, /saved teacher model configuration/i);
 		assert.equal((await getModelPresets()).teacher.available, false);
+	} finally {
+		for (const [key, value] of savedEnv) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		await rm(tempRoot, { recursive: true, force: true });
+	}
+});
+
+test('teacher labels use the model name from Hugging Face cache paths', async () => {
+	const savedEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+	const tempRoot = await mkdtemp(path.join(tmpdir(), 'moonshine-teacher-cache-label-'));
+
+	try {
+		process.env.DISTILL_HOME = path.join(tempRoot, 'distill');
+		delete process.env.MOONSHINE_QWEN_4B_PATH;
+		delete process.env.MOONSHINE_QWEN_8B_PATH;
+		const cachedPath = await makeModelFixture(
+			tempRoot,
+			path.join('models--mlx-community--Qwen3.5-35B-A3B-4bit', 'snapshots', 'revision-123')
+		);
+		process.env.MOONSHINE_QWEN_30B_PATH = cachedPath;
+
+		assert.deepEqual(await getTeacherSettings(), {
+			path: cachedPath,
+			label: 'Qwen3.5-35B-A3B-4bit',
+			source: 'environment'
+		});
+		assert.deepEqual((await getModelPresets()).teacher, {
+			label: 'Qwen3.5-35B-A3B-4bit',
+			available: true
+		});
+		assert.equal(JSON.stringify(await getModelPresets()).includes(cachedPath), false);
 	} finally {
 		for (const [key, value] of savedEnv) {
 			if (value === undefined) delete process.env[key];

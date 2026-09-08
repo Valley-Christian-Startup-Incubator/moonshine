@@ -66,11 +66,11 @@
 	>
 		<div class="flex items-center gap-2">
 			<h2 id="teacher-heading" class="text-base font-medium text-zinc-100">
-				Configure teacher · Qwen 30B
+				Configure teacher · {data.teacherSettings.label}
 			</h2>
 			<InfoDialog title="Local teacher folder"
 				><p>
-					<strong>1.</strong> Locate the installed Qwen 30B model in MLX format on
+					<strong>1.</strong> Locate the installed Qwen model in MLX format on
 					the computer running Moonshine.
 				</p>
 				<p>
@@ -85,7 +85,7 @@
 				</p>
 				<p>
 					The check verifies the Qwen configuration and required files, not
-					inference or the parameter count. Use the instructor-approved 30B
+					inference or the parameter count. Use the instructor-approved
 					model.
 				</p></InfoDialog
 			>

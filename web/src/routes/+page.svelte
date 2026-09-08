@@ -270,8 +270,8 @@
 						</p>
 						<p>
 							The current question generator uses templates. Review the samples
-							before generating teacher answers. Teacher answers use Qwen 30B
-							once a local model is configured.
+							before generating teacher answers. An instructor must configure a
+							local teacher model before generating answers.
 						</p>
 					{:else}<p>
 							<strong>Train from answers</strong> teaches the student to predict the
@@ -330,12 +330,11 @@
 							>
 								<p>
 									The teacher creates the answers your student learns from.
-									The course standard is Qwen 30B, so the model family and size are
-									fixed.
+									The model shown here is the source selected by your instructor.
 								</p>
 								<p>
 									<strong>1. Configure the source.</strong> An instructor opens Configure
-									teacher and selects the installed Qwen 30B folder in MLX format.
+									teacher and selects the installed Qwen model folder in MLX format.
 									No model is downloaded.
 								</p>
 								<p>
@@ -350,7 +349,7 @@
 							</InfoDialog>
 						</div>
 						<p class="text-sm font-medium text-zinc-100">
-							Qwen 30B <span class="ml-2 text-xs font-normal text-zinc-500"
+							{data.modelPresets.teacher.label} <span class="ml-2 text-xs font-normal text-zinc-500"
 								>{data.modelPresets.teacher.available
 									? 'Source configured'
 									: 'Setup needed'}</span
