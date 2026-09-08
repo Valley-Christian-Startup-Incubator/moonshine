@@ -1,4 +1,5 @@
 <script lang="ts">
+	import JsonExample from '$lib/components/JsonExample.svelte';
 	import { enhance } from '$app/forms';
 	import { untrack, tick } from 'svelte';
 	import type { ActionData, PageData } from './$types';
@@ -437,7 +438,7 @@
 						<p>Give the teacher the questions or instructions you want it to answer.
 							Save a plain-text file ending in <code>.jsonl</code>, with one JSON
 							object per line. Each object needs a <code>"prompt"</code> field:</p>
-						<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"prompt":"Explain how a gear ratio changes torque."}\n{"prompt":"List three ways a school can reduce plastic waste."}'}</code></pre>
+						<JsonExample code={'{"prompt":"Explain how a gear ratio changes torque."}\n{"prompt":"List three ways a school can reduce plastic waste."}'} />
 						<p>Use double quotes, with no commas between lines and no surrounding
 							square brackets. Include only questions; the teacher will add the answers.</p>
 						<p>Start with the example below and replace its questions, or upload the
@@ -446,7 +447,7 @@
 						<p>Save a plain-text <code>.jsonl</code> file with one topic per line.
 							Each JSON object has a <code>"topic"</code> string and an
 							<code>"n"</code> number: how many questions to make for that topic.</p>
-						<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"topic":"robotics","n":5}\n{"topic":"plastic waste","n":3}'}</code></pre>
+						<JsonExample code={'{"topic":"robotics","n":5}\n{"topic":"plastic waste","n":3}'} />
 						<p>Use double quotes around text and a positive whole number for
 							<code>"n"</code>. Do not put commas between lines or wrap them in square
 							brackets. Download the example below to get started.</p>
@@ -457,7 +458,7 @@
 						<p>The plain-text <code>.jsonl</code> file needs one JSON object per
 							line, with nonempty <code>"prompt"</code> (question) and
 							<code>"completion"</code> (teacher answer) strings:</p>
-						<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{activeJobType.inputExample}</code></pre>
+						<JsonExample code={activeJobType.inputExample ?? ''} />
 						<p>Use double quotes, with no commas between lines or surrounding square
 							brackets. Write line breaks inside an answer as <code>\n</code> so each
 							example stays on one line. The download below shows the format.</p>

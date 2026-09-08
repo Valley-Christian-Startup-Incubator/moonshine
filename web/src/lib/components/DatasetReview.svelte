@@ -1,4 +1,5 @@
 <script lang="ts">
+	import JsonExample from '$lib/components/JsonExample.svelte';
 	let { file = null, split = false }: { file?: File | null; split?: boolean } =
 		$props();
 	let localFile = $state<File | null>(null);
@@ -160,7 +161,7 @@
 			<p>Use a plain-text <code>.jsonl</code> file with one JSON object per line.
 				Each needs nonempty <code>"prompt"</code> (question) and
 				<code>"completion"</code> (teacher answer) strings:</p>
-			<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"prompt":"What is torque?","completion":"Torque is a turning force."}'}</code></pre>
+			<JsonExample code={'{"prompt":"What is torque?","completion":"Torque is a turning force."}'} />
 			<p>Use double quotes, with no commas between lines or surrounding square brackets.
 				Write line breaks inside an answer as <code>\n</code>. Include at least five
 				different questions so both splits can contain examples.</p>
