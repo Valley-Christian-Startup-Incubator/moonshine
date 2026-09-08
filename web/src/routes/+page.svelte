@@ -432,9 +432,24 @@
 		{#if activeJobType.requiresInput}
 			<div id="dataset" class="mt-6" class:tour-target={tour === 2}>
 				<label class="label" for="file">{activeJobType.inputLabel}</label>
+				<div id="file-help" class="mb-3 space-y-2 text-sm text-zinc-400">
+					{#if selectedType === 'teacher-gen'}
+						<p>Give the teacher the questions or instructions you want it to answer.
+							Save a plain-text file ending in <code>.jsonl</code>, with one JSON
+							object per line. Each object needs a <code>"prompt"</code> field:</p>
+						<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"prompt":"Explain how a gear ratio changes torque."}\n{"prompt":"List three ways a school can reduce plastic waste."}'}</code></pre>
+						<p>Use double quotes, with no commas between lines and no surrounding
+							square brackets. Include only questions; the teacher will add the answers.</p>
+						<p>Start with the example below and replace its questions, or upload the
+							file downloaded from <strong>Make questions</strong>.</p>
+					{:else}
+						<p>{activeJobType.inputHelp}</p>
+					{/if}
+				</div>
 				<input
 					bind:this={fileInput}
 					id="file"
+					aria-describedby="file-help"
 					name="file"
 					type="file"
 					accept=".jsonl"
