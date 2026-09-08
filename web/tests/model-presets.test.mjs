@@ -15,7 +15,9 @@ import { test } from 'node:test';
 import {
 	getModelPresetConfig,
 	getModelPresets,
+	getStudentSettings,
 	getTeacherSettings,
+	saveStudentModelPath,
 	saveTeacherModelPath
 } from '../src/lib/server/model-presets.ts';
 
@@ -53,6 +55,16 @@ async function assertTeacherPathRejected(modelPath) {
 	);
 }
 
+async function assertStudentPathRejected(id, modelPath) {
+	await assert.rejects(
+		saveStudentModelPath(id, modelPath),
+		(error) => {
+			assert.match(error.message, /Expected a local Qwen MLX directory/);
+			return true;
+		}
+	);
+}
+
 test('model presets expose only configured local model availability', async () => {
 	const savedEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
 	const tempRoot = await mkdtemp(path.join(tmpdir(), 'moonshine-model-presets-'));
@@ -80,10 +92,9 @@ test('model presets expose only configured local model availability', async () =
 		for (const [key, value] of Object.entries(missingPresets)) process.env[key] = value;
 		assert.deepEqual(await getModelPresets(), unavailablePresets);
 
-		const qwen4bPath = path.join(tempRoot, 'qwen-4b');
-		const qwen8bPath = path.join(tempRoot, 'qwen-8b');
+		const qwen4bPath = await makeModelFixture(tempRoot, 'qwen-4b');
+		const qwen8bPath = await makeModelFixture(tempRoot, 'qwen-8b');
 		const qwen30bPath = await makeModelFixture(tempRoot, 'qwen-30b');
-		await Promise.all([mkdir(qwen4bPath), mkdir(qwen8bPath)]);
 		process.env.MOONSHINE_QWEN_4B_PATH = qwen4bPath;
 		process.env.MOONSHINE_QWEN_8B_PATH = qwen8bPath;
 		process.env.MOONSHINE_QWEN_30B_PATH = qwen30bPath;
@@ -279,6 +290,113 @@ test('teacher labels use the model name from Hugging Face cache paths', async ()
 			available: true
 		});
 		assert.equal(JSON.stringify(await getModelPresets()).includes(cachedPath), false);
+	} finally {
+		for (const [key, value] of savedEnv) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		await rm(tempRoot, { recursive: true, force: true });
+	}
+});
+
+test('student paths save to separate slots and override their environment paths', async () => {
+	const savedEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+	const tempRoot = await mkdtemp(path.join(tmpdir(), 'moonshine-student-save-'));
+
+	try {
+		process.env.DISTILL_HOME = path.join(tempRoot, 'distill');
+		delete process.env.MOONSHINE_QWEN_30B_PATH;
+		const environment4b = await makeModelFixture(tempRoot, 'environment-4b');
+		const environment8b = await makeModelFixture(tempRoot, 'environment-8b');
+		const saved4b = await makeModelFixture(tempRoot, 'saved-4b');
+		process.env.MOONSHINE_QWEN_4B_PATH = environment4b;
+		process.env.MOONSHINE_QWEN_8B_PATH = environment8b;
+
+		assert.deepEqual(await getStudentSettings(), {
+			'qwen-4b': { path: environment4b, label: 'environment-4b', source: 'environment' },
+			'qwen-8b': { path: environment8b, label: 'environment-8b', source: 'environment' }
+		});
+		assert.deepEqual((await getModelPresetConfig()).paths.students, {
+			'qwen-4b': environment4b,
+			'qwen-8b': environment8b
+		});
+
+		assert.equal(await saveStudentModelPath('qwen-4b', ` ${saved4b} `), saved4b);
+		const configPath = path.join(process.env.DISTILL_HOME, 'student-model-qwen-4b.json');
+		assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')), { path: saved4b });
+		assert.equal((await stat(configPath)).mode & 0o777, 0o600);
+		assert.deepEqual(await getStudentSettings(), {
+			'qwen-4b': { path: saved4b, label: 'saved-4b', source: 'saved' },
+			'qwen-8b': { path: environment8b, label: 'environment-8b', source: 'environment' }
+		});
+		assert.deepEqual((await getModelPresetConfig()).paths.students, {
+			'qwen-4b': saved4b,
+			'qwen-8b': environment8b
+		});
+
+		await rm(path.join(saved4b, 'model.safetensors'));
+		const broken = await getStudentSettings();
+		assert.equal(broken['qwen-4b'].path, saved4b);
+		assert.equal(broken['qwen-4b'].source, 'saved');
+		assert.match(broken['qwen-4b'].error, /Expected a local Qwen MLX directory/);
+		assert.equal(broken['qwen-8b'].path, environment8b);
+		assert.deepEqual((await getModelPresetConfig()).paths.students, {
+			'qwen-4b': undefined,
+			'qwen-8b': environment8b
+		});
+	} finally {
+		for (const [key, value] of savedEnv) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+		await rm(tempRoot, { recursive: true, force: true });
+	}
+});
+
+test('student settings validate saved and environment paths, fail closed, and reject invalid ids', async () => {
+	const savedEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
+	const tempRoot = await mkdtemp(path.join(tmpdir(), 'moonshine-student-validation-'));
+
+	try {
+		process.env.DISTILL_HOME = path.join(tempRoot, 'distill');
+		delete process.env.MOONSHINE_QWEN_30B_PATH;
+		const environmentPath = await makeModelFixture(tempRoot, 'environment-4b');
+		process.env.MOONSHINE_QWEN_4B_PATH = environmentPath;
+		delete process.env.MOONSHINE_QWEN_8B_PATH;
+
+		await assertStudentPathRejected('qwen-4b', path.join(tempRoot, 'missing-model'));
+		const nonQwenPath = await makeModelFixture(tempRoot, 'non-qwen', { modelType: 'llama' });
+		await assertStudentPathRejected('qwen-4b', nonQwenPath);
+		const missingCheckpointPath = await makeModelFixture(tempRoot, 'missing-checkpoint', {
+			checkpoint: false
+		});
+		await assertStudentPathRejected('qwen-4b', missingCheckpointPath);
+
+		await mkdir(process.env.DISTILL_HOME, { recursive: true });
+		await writeFile(path.join(process.env.DISTILL_HOME, 'student-model-qwen-4b.json'), '{not-json');
+		const corrupt = await getStudentSettings();
+		assert.equal(corrupt['qwen-4b'].path, '');
+		assert.equal(corrupt['qwen-4b'].source, 'none');
+		assert.match(corrupt['qwen-4b'].error, /saved student model configuration/i);
+		assert.equal((await getModelPresetConfig()).paths.students['qwen-4b'], undefined);
+
+		await writeFile(
+			path.join(process.env.DISTILL_HOME, 'student-model-qwen-4b.json'),
+			JSON.stringify({ path: path.join(tempRoot, 'missing-saved-model') })
+		);
+		const missingSaved = await getStudentSettings();
+		assert.equal(missingSaved['qwen-4b'].source, 'saved');
+		assert.equal(missingSaved['qwen-4b'].path, path.join(tempRoot, 'missing-saved-model'));
+		assert.match(missingSaved['qwen-4b'].error, /Expected a local Qwen MLX directory/);
+		assert.equal((await getModelPresetConfig()).paths.students['qwen-4b'], undefined);
+
+		await assert.rejects(
+			saveStudentModelPath('qwen-16b', path.join(tempRoot, 'missing-model')),
+			(error) => {
+				assert.match(error.message, /Invalid student model id/);
+				return true;
+			}
+		);
 	} finally {
 		for (const [key, value] of savedEnv) {
 			if (value === undefined) delete process.env[key];

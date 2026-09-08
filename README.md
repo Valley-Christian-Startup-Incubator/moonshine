@@ -56,8 +56,12 @@ count. The instructor must select the approved model. Teacher labels follow the 
 folder name (or the model name for a Hugging Face cache snapshot).
 
 Saved teacher settings take precedence over `MOONSHINE_QWEN_30B_PATH` in the web
-process environment. Operators still configure student directories with
-`MOONSHINE_QWEN_4B_PATH` and `MOONSHINE_QWEN_8B_PATH`. An unconfigured model
+process environment. In **Train**, choose **Configure student models** to check and save each installed
+Qwen 4B or 8B MLX folder, using the same instructor sign-in. Each student source
+is saved separately under `$DISTILL_HOME` and applies to new jobs immediately.
+Saved student settings take precedence over `MOONSHINE_QWEN_4B_PATH` and
+`MOONSHINE_QWEN_8B_PATH`; those variables remain available as fallbacks.
+The checks verify model files, not parameter count or inference. An unconfigured model
 cannot be submitted. Ollama model blobs are not MLX training directories.
 
 Training and quantization still run on the shared Studio and store weights

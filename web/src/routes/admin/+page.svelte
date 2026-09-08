@@ -12,6 +12,8 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let teacherDraft = $state<string | null>(null);
 	let savingTeacher = $state(false);
+	let studentDrafts = $state<Record<string, string>>({});
+	let savingStudent = $state<string | null>(null);
 
 	$effect(() => {
 		if (!data.authed) return;
@@ -28,7 +30,7 @@
 	<div class="mx-auto max-w-sm">
 		<h1 class="text-xl font-semibold text-zinc-100">Instructor sign in</h1>
 		<p class="mt-2 text-sm text-zinc-400">
-			Sign in to configure the teacher model or manage jobs.
+			Sign in to configure teacher and student models or manage jobs.
 		</p>
 		{#if form?.error}
 			<div
@@ -146,6 +148,41 @@
 				>
 			</div>
 		</form>
+	</section>
+
+
+	<section id="student-models" class="card mt-6 scroll-mt-6 p-5" aria-labelledby="student-heading">
+		<h2 id="student-heading" class="text-base font-medium text-zinc-100">Configure student models</h2>
+		<p class="mt-2 text-sm text-zinc-400">Choose the installed Qwen 4B and 8B MLX folders on the computer running Moonshine. Each folder needs config.json, tokenizer.json, and its safetensors weights. Nothing is downloaded.</p>
+		<p class="mt-2 text-xs text-zinc-500">The check verifies required files, not inference or parameter count. Use the instructor-approved model for each size.</p>
+		{#each ['qwen-4b', 'qwen-8b'] as id}
+			{@const settings = data.studentSettings[id as 'qwen-4b' | 'qwen-8b']}
+			{@const label = id === 'qwen-4b' ? 'Qwen 4B' : 'Qwen 8B'}
+			<form method="POST" action="?/saveStudent" class="mt-5 border-t border-border-subtle pt-5"
+				use:enhance={() => {
+					savingStudent = id;
+					return async ({ update }) => {
+						try { await update({ reset: false }); }
+						finally { savingStudent = null; }
+					};
+				}}>
+				<input type="hidden" name="studentId" value={id} />
+				<label for={`${id}-path`} class="label">{label} local model folder</label>
+				<input id={`${id}-path`} name="studentPath" type="text" class="input font-mono"
+					value={studentDrafts[id] ?? (form?.studentId === id ? form?.studentPath : undefined) ?? settings.path}
+					oninput={(event) => (studentDrafts[id] = event.currentTarget.value)}
+					placeholder={`/absolute/path/to/${id}`} required />
+				<p class="mt-2 text-xs text-zinc-400">{settings.error ? 'Needs attention' : settings.source === 'none' ? 'Not configured' : `Configured · ${settings.label}`} · {settings.source === 'saved' ? 'Saved in Moonshine' : settings.source === 'environment' ? 'Server environment' : 'No source saved'}</p>
+				{#if form?.studentId === id && form?.studentError}
+					<p role="alert" class="mt-3 text-sm text-red-300">{form.studentError}</p>
+				{:else if settings.error}
+					<p role="alert" class="mt-3 text-sm text-amber-200">{settings.error}</p>
+				{/if}
+				{#if form?.studentSaved === id}<p role="status" class="mt-3 text-sm text-emerald-300">{label} source saved. New jobs will use this folder.</p>{/if}
+				<button type="submit" class="btn-primary mt-4" disabled={savingStudent !== null}>{savingStudent === id ? 'Checking…' : `Check & save ${label}`}</button>
+			</form>
+		{/each}
+		<a href="/?jobType=finetune" class="mt-5 inline-block text-sm text-blue-300 hover:underline">Back to training →</a>
 	</section>
 
 	<div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">

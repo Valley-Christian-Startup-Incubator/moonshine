@@ -417,6 +417,7 @@
 										: ' · unavailable'}</option
 								>{/each}</select
 						>
+						<a href="/admin#student-models" class="mt-2 inline-block text-xs text-blue-300 hover:underline">Configure student models →</a>
 					</div>{/if}
 				{#if selectedType === 'quantize'}<div>
 						<label class="label" for="Q_BITS">Bits per weight</label><select

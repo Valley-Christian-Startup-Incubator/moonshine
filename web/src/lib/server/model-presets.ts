@@ -41,19 +41,41 @@ export interface TeacherSettings {
 	error?: string;
 }
 
+const STUDENT_MODEL_IDS = ['qwen-4b', 'qwen-8b'] as const;
+const STUDENT_CONFIG_FILENAMES: Record<StudentModelId, string> = {
+	'qwen-4b': 'student-model-qwen-4b.json',
+	'qwen-8b': 'student-model-qwen-8b.json'
+};
+const STUDENT_ENVIRONMENT_KEYS: Record<StudentModelId, string> = {
+	'qwen-4b': 'MOONSHINE_QWEN_4B_PATH',
+	'qwen-8b': 'MOONSHINE_QWEN_8B_PATH'
+};
+const STUDENT_DEFAULT_LABELS: Record<StudentModelId, string> = {
+	'qwen-4b': 'Qwen 4B',
+	'qwen-8b': 'Qwen 8B'
+};
 const TEACHER_CONFIG_FILENAME = 'teacher-model.json';
 const DEFAULT_TEACHER_LABEL = 'Teacher model';
 const TEACHER_DIRECTORY_HINT =
 	'Expected a local Qwen MLX directory with config.json, tokenizer.json, and a usable safetensors checkpoint.';
 
-function teacherConfigPath(): string {
-	return path.join(
-		process.env.DISTILL_HOME ?? path.join(os.homedir(), '.distill'),
-		TEACHER_CONFIG_FILENAME
-	);
+function distillHome(): string {
+	return process.env.DISTILL_HOME ?? path.join(os.homedir(), '.distill');
 }
 
-function teacherValidationError(reason: string): Error {
+function teacherConfigPath(): string {
+	return path.join(distillHome(), TEACHER_CONFIG_FILENAME);
+}
+
+function isStudentModelId(value: unknown): value is StudentModelId {
+	return typeof value === 'string' && (STUDENT_MODEL_IDS as readonly string[]).includes(value);
+}
+
+function studentConfigPath(id: StudentModelId): string {
+	return path.join(distillHome(), STUDENT_CONFIG_FILENAMES[id]);
+}
+
+function modelValidationError(reason: string): Error {
 	return new Error(`${TEACHER_DIRECTORY_HINT} ${reason}`);
 }
 
@@ -84,7 +106,7 @@ async function requireRegularFile(filePath: string, description: string): Promis
 		const file = await stat(filePath);
 		if (!file.isFile()) throw new Error('not a regular file');
 	} catch {
-		throw teacherValidationError(`${description} is missing or is not a regular file.`);
+		throw modelValidationError(`${description} is missing or is not a regular file.`);
 	}
 }
 
@@ -93,21 +115,21 @@ async function requireNonEmptyRegularFile(filePath: string, description: string)
 		const file = await stat(filePath);
 		if (!file.isFile() || file.size === 0) throw new Error('not a non-empty regular file');
 	} catch {
-		throw teacherValidationError(`${description} is missing, is not a regular file, or is empty.`);
+		throw modelValidationError(`${description} is missing, is not a regular file, or is empty.`);
 	}
 }
 
-async function validateTeacherModelPath(rawPath: string): Promise<string> {
+async function validateModelPath(rawPath: string): Promise<string> {
 	const modelPath = typeof rawPath === 'string' ? rawPath.trim() : '';
 	if (!modelPath || !path.isAbsolute(modelPath)) {
-		throw teacherValidationError('Provide the full absolute path to the model directory.');
+		throw modelValidationError('Provide the full absolute path to the model directory.');
 	}
 
 	try {
 		const modelDirectory = await stat(modelPath);
 		if (!modelDirectory.isDirectory()) throw new Error('not a directory');
 	} catch {
-		throw teacherValidationError('The supplied path must be an existing directory.');
+		throw modelValidationError('The supplied path must be an existing directory.');
 	}
 
 	const configPath = path.join(modelPath, 'config.json');
@@ -117,14 +139,14 @@ async function validateTeacherModelPath(rawPath: string): Promise<string> {
 	try {
 		config = JSON.parse(await readFile(configPath, 'utf8'));
 	} catch {
-		throw teacherValidationError('config.json must contain valid JSON.');
+		throw modelValidationError('config.json must contain valid JSON.');
 	}
 	if (
 		!isRecord(config) ||
 		typeof config.model_type !== 'string' ||
 		!config.model_type.toLowerCase().startsWith('qwen')
 	) {
-		throw teacherValidationError('config.json must contain a model_type string beginning with "qwen".');
+		throw modelValidationError('config.json must contain a model_type string beginning with "qwen".');
 	}
 
 	await requireRegularFile(path.join(modelPath, 'tokenizer.json'), 'tokenizer.json');
@@ -134,7 +156,7 @@ async function validateTeacherModelPath(rawPath: string): Promise<string> {
 	try {
 		const indexFile = await stat(indexPath);
 		indexExists = true;
-		if (!indexFile.isFile()) throw teacherValidationError('model.safetensors.index.json must be a regular file.');
+		if (!indexFile.isFile()) throw modelValidationError('model.safetensors.index.json must be a regular file.');
 	} catch (error) {
 		if (errorCode(error) !== 'ENOENT') throw error;
 	}
@@ -144,12 +166,12 @@ async function validateTeacherModelPath(rawPath: string): Promise<string> {
 		try {
 			index = JSON.parse(await readFile(indexPath, 'utf8'));
 		} catch {
-			throw teacherValidationError('model.safetensors.index.json must contain valid JSON.');
+			throw modelValidationError('model.safetensors.index.json must contain valid JSON.');
 		}
 
 		const weightMap = isRecord(index) ? index.weight_map : undefined;
 		if (!isRecord(weightMap) || Object.keys(weightMap).length === 0) {
-			throw teacherValidationError(
+			throw modelValidationError(
 				'model.safetensors.index.json must contain a non-empty weight_map object.'
 			);
 		}
@@ -157,7 +179,7 @@ async function validateTeacherModelPath(rawPath: string): Promise<string> {
 		const shardNames = new Set<string>();
 		for (const shard of Object.values(weightMap)) {
 			if (typeof shard !== 'string' || !isShardBasename(shard)) {
-				throw teacherValidationError(
+				throw modelValidationError(
 					'Every weight_map value must be a non-empty shard basename within the model directory.'
 				);
 			}
@@ -192,28 +214,31 @@ function teacherLabelForPath(modelPath: string): string {
 	return path.basename(normalizedPath) || DEFAULT_TEACHER_LABEL;
 }
 
-type StoredTeacherConfig =
+type StoredModelConfig =
 	| { kind: 'missing' }
 	| { kind: 'invalid'; error: string }
 	| { kind: 'path'; path: string };
 
-async function readStoredTeacherConfig(): Promise<StoredTeacherConfig> {
+async function readStoredModelConfig(configPath: string, description: string): Promise<StoredModelConfig> {
 	let rawConfig: string;
 	try {
-		rawConfig = await readFile(teacherConfigPath(), 'utf8');
+		rawConfig = await readFile(configPath, 'utf8');
 	} catch (error) {
 		if (errorCode(error) === 'ENOENT') return { kind: 'missing' };
-		return { kind: 'invalid', error: 'The saved teacher model configuration could not be read.' };
+		return { kind: 'invalid', error: `The saved ${description} configuration could not be read.` };
 	}
 
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(rawConfig);
 	} catch {
-		return { kind: 'invalid', error: 'The saved teacher model configuration is not valid JSON.' };
+		return { kind: 'invalid', error: `The saved ${description} configuration is not valid JSON.` };
 	}
 	if (!isRecord(parsed) || typeof parsed.path !== 'string') {
-		return { kind: 'invalid', error: 'The saved teacher model configuration must contain a path string.' };
+		return {
+			kind: 'invalid',
+			error: `The saved ${description} configuration must contain a path string.`
+		};
 	}
 
 	return { kind: 'path', path: parsed.path.trim() };
@@ -221,15 +246,16 @@ async function readStoredTeacherConfig(): Promise<StoredTeacherConfig> {
 
 async function settingsForPath(
 	modelPath: string,
-	source: Exclude<TeacherSettingsSource, 'none'>
+	source: Exclude<TeacherSettingsSource, 'none'>,
+	defaultLabel: string
 ): Promise<TeacherSettings> {
 	try {
-		const validatedPath = await validateTeacherModelPath(modelPath);
+		const validatedPath = await validateModelPath(modelPath);
 		return { path: validatedPath, label: teacherLabelForPath(validatedPath), source };
 	} catch (error) {
 		return {
 			path: modelPath,
-			label: DEFAULT_TEACHER_LABEL,
+			label: defaultLabel,
 			source,
 			error: error instanceof Error ? error.message : String(error)
 		};
@@ -237,19 +263,19 @@ async function settingsForPath(
 }
 
 export async function getTeacherSettings(): Promise<TeacherSettings> {
-	const stored = await readStoredTeacherConfig();
+	const stored = await readStoredModelConfig(teacherConfigPath(), 'teacher model');
 	if (stored.kind === 'invalid') {
 		return { path: '', label: DEFAULT_TEACHER_LABEL, source: 'none', error: stored.error };
 	}
-	if (stored.kind === 'path') return settingsForPath(stored.path, 'saved');
+	if (stored.kind === 'path') return settingsForPath(stored.path, 'saved', DEFAULT_TEACHER_LABEL);
 
 	const environmentPath = process.env.MOONSHINE_QWEN_30B_PATH?.trim();
 	if (!environmentPath) return { path: '', label: DEFAULT_TEACHER_LABEL, source: 'none' };
-	return settingsForPath(environmentPath, 'environment');
+	return settingsForPath(environmentPath, 'environment', DEFAULT_TEACHER_LABEL);
 }
 
 export async function saveTeacherModelPath(raw: string): Promise<string> {
-	const modelPath = await validateTeacherModelPath(raw);
+	const modelPath = await validateModelPath(raw);
 	const configPath = teacherConfigPath();
 	const temporaryPath = `${configPath}.${process.pid}.${randomUUID()}.tmp`;
 	try {
@@ -267,22 +293,70 @@ export async function saveTeacherModelPath(raw: string): Promise<string> {
 	return modelPath;
 }
 
-async function resolveLocalModelPath(rawPath: string | undefined): Promise<string | undefined> {
-	if (!rawPath || !path.isAbsolute(rawPath)) return undefined;
+export async function getStudentSettings(): Promise<Record<StudentModelId, TeacherSettings>> {
+	const settings = await Promise.all(
+		STUDENT_MODEL_IDS.map(async (id) => {
+			const stored = await readStoredModelConfig(studentConfigPath(id), 'student model');
+			if (stored.kind === 'invalid') {
+				return [
+					id,
+					{
+						path: '',
+						label: STUDENT_DEFAULT_LABELS[id],
+						source: 'none',
+						error: stored.error
+					}
+				] as const;
+			}
+			if (stored.kind === 'path') {
+				return [id, await settingsForPath(stored.path, 'saved', STUDENT_DEFAULT_LABELS[id])] as const;
+			}
 
+			const environmentPath = process.env[STUDENT_ENVIRONMENT_KEYS[id]]?.trim();
+			if (!environmentPath) {
+				return [
+					id,
+					{ path: '', label: STUDENT_DEFAULT_LABELS[id], source: 'none' }
+				] as const;
+			}
+			return [id, await settingsForPath(environmentPath, 'environment', STUDENT_DEFAULT_LABELS[id])] as const;
+		})
+	);
+
+	return Object.fromEntries(settings) as Record<StudentModelId, TeacherSettings>;
+}
+
+export async function saveStudentModelPath(id: StudentModelId, raw: string): Promise<string> {
+	if (!isStudentModelId(id)) throw new Error('Invalid student model id.');
+
+	const modelPath = await validateModelPath(raw);
+	const configPath = studentConfigPath(id);
+	const temporaryPath = `${configPath}.${process.pid}.${randomUUID()}.tmp`;
 	try {
-		return (await stat(rawPath)).isDirectory() ? rawPath : undefined;
-	} catch {
-		return undefined;
+		await mkdir(path.dirname(configPath), { recursive: true });
+		await writeFile(temporaryPath, `${JSON.stringify({ path: modelPath })}\n`, {
+			encoding: 'utf8',
+			flag: 'wx',
+			mode: 0o600
+		});
+		await rename(temporaryPath, configPath);
+	} catch (error) {
+		await unlink(temporaryPath).catch(() => undefined);
+		throw error;
 	}
+	return modelPath;
 }
 
 export async function getModelPresetConfig(): Promise<ModelPresetConfig> {
-	const [qwen4b, qwen8b, teacherSettings] = await Promise.all([
-		resolveLocalModelPath(process.env.MOONSHINE_QWEN_4B_PATH),
-		resolveLocalModelPath(process.env.MOONSHINE_QWEN_8B_PATH),
-		getTeacherSettings()
-	]);
+	const [studentSettings, teacherSettings] = await Promise.all([getStudentSettings(), getTeacherSettings()]);
+	const qwen4b =
+		studentSettings['qwen-4b'].error || studentSettings['qwen-4b'].source === 'none'
+			? undefined
+			: studentSettings['qwen-4b'].path;
+	const qwen8b =
+		studentSettings['qwen-8b'].error || studentSettings['qwen-8b'].source === 'none'
+			? undefined
+			: studentSettings['qwen-8b'].path;
 	const qwen30b = teacherSettings.error || teacherSettings.source === 'none' ? undefined : teacherSettings.path;
 
 	return {
