@@ -162,7 +162,7 @@
 				<code>"completion"</code> (teacher answer) strings:</p>
 			<pre class="overflow-x-auto rounded-lg border border-border-subtle bg-zinc-950 p-3 text-xs text-zinc-300"><code>{'{"prompt":"What is torque?","completion":"Torque is a turning force."}'}</code></pre>
 			<p>Use double quotes, with no commas between lines or surrounding square brackets.
-				Write line breaks inside an answer as <code>\n</code>. Include at least two
+				Write line breaks inside an answer as <code>\n</code>. Include at least five
 				different questions so both splits can contain examples.</p>
 			<a href="/examples/training.jsonl" class="text-xs underline">Download Q&A example</a>
 		</div>
