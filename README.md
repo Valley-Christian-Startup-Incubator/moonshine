@@ -1,5 +1,8 @@
 # Distillation Job Scheduler
 
+<img width="1142" height="901" alt="image" src="https://github.com/user-attachments/assets/ca21de37-3201-4c23-b9e4-a610805709ed" />
+
+
 A classroom tool for running MLX distillation/fine-tuning jobs on a shared
 Mac Studio. Student teams submit jobs through a web UI; jobs execute one at
 a time (strict FIFO), so everyone shares the machine fairly.
