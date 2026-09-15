@@ -6,6 +6,8 @@
 
 	let { data }: { data: PageData } = $props();
 
+	let ownerFilter = $state('mine');
+	let modelsOnly = $state(false);
 	let teamFilter = $state<string>('all');
 	let statusFilter = $state<string>('all');
 
@@ -13,6 +15,8 @@
 
 	const filteredJobs = $derived(
 		data.jobs.filter((job) => {
+			if (ownerFilter === 'mine' && job.ownerId !== data.currentUser?.id) return false;
+			if (modelsOnly && !['finetune', 'distill', 'quantize'].includes(job.type)) return false;
 			if (teamFilter !== 'all' && job.team !== teamFilter) return false;
 			if (statusFilter !== 'all' && job.status !== statusFilter) return false;
 			return true;
@@ -35,16 +39,17 @@
 	<title>Jobs — Distill Scheduler</title>
 </svelte:head>
 
-<div class="flex items-center justify-between">
+<div class="flex flex-wrap items-center justify-between gap-3">
 	<h1 class="text-xl font-semibold text-zinc-100">Jobs</h1>
-	<div class="flex gap-2">
-		<select bind:value={teamFilter} class="input w-auto text-sm">
+	<div class="flex flex-wrap gap-2">
+		<select aria-label="Run owner" bind:value={ownerFilter} class="input w-auto text-sm"><option value="mine">My runs</option><option value="all">Everyone’s runs</option></select>
+		<select aria-label="Team" bind:value={teamFilter} class="input w-auto text-sm">
 			<option value="all">All teams</option>
 			{#each data.teams as team (team)}
 				<option value={team}>{team}</option>
 			{/each}
 		</select>
-		<select bind:value={statusFilter} class="input w-auto text-sm">
+		<select aria-label="Status" bind:value={statusFilter} class="input w-auto text-sm">
 			<option value="all">All statuses</option>
 			{#each statuses as s (s)}
 				<option value={s}>{s}</option>
@@ -52,6 +57,8 @@
 		</select>
 	</div>
 </div>
+
+<label class="mt-4 flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" bind:checked={modelsOnly} /> Models and adapters only</label>
 
 <div class="mt-4 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
 	<div class="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-4">
@@ -71,6 +78,7 @@
 		<thead>
 			<tr class="border-b border-border-subtle text-left text-xs uppercase tracking-wide text-zinc-500">
 				<th class="px-4 py-3 font-medium">Job ID</th>
+				<th class="px-4 py-3 font-medium">Owner</th>
 				<th class="px-4 py-3 font-medium">Team</th>
 				<th class="px-4 py-3 font-medium">Type</th>
 				<th class="px-4 py-3 font-medium">Status</th>
@@ -84,7 +92,8 @@
 					class="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-bg-subtle"
 					onclick={() => (window.location.href = `/jobs/${job.id}`)}
 				>
-					<td class="px-4 py-3 font-mono text-xs text-zinc-300">{job.id}</td>
+					<td class="px-4 py-3 font-mono text-xs text-zinc-300"><a class="underline decoration-zinc-700 underline-offset-4 hover:text-white" href="/jobs/{job.id}">{job.id}</a></td>
+					<td class="px-4 py-3 text-zinc-300">{job.ownerName ?? 'Unassigned'}</td>
 					<td class="px-4 py-3 text-zinc-300">{job.team}</td>
 					<td class="px-4 py-3 text-zinc-400">{jobTypeLabel(job.type)}</td>
 					<td class="px-4 py-3"><span class={statusBadgeClass(job.status)}>{job.status}</span></td>
@@ -95,7 +104,7 @@
 				</tr>
 			{:else}
 				<tr>
-					<td colspan="6" class="px-4 py-10 text-center text-zinc-500">No jobs match these filters.</td>
+					<td colspan="7" class="px-4 py-10 text-center text-zinc-500">No jobs match these filters.</td>
 				</tr>
 			{/each}
 		</tbody>

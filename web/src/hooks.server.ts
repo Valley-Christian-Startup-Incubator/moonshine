@@ -1,21 +1,16 @@
 import { redirect, type Handle } from '@sveltejs/kit';
-import {
-	isWebAuthEnabled,
-	isWebSessionValid,
-	WEB_SESSION_COOKIE
-} from '$lib/server/auth';
+import { getUserFromSession, WEB_SESSION_COOKIE } from '$lib/server/auth';
 
-const PUBLIC_PATHS = new Set(['/login', '/favicon.svg']);
+const PUBLIC_PATHS = new Set(['/login', '/register', '/favicon.svg']);
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname, search } = event.url;
-	const isPublic = PUBLIC_PATHS.has(pathname) || pathname.startsWith('/_app/');
+	const user = await getUserFromSession(event.cookies.get(WEB_SESSION_COOKIE));
+	event.locals.user = user;
 
-	if (
-		isWebAuthEnabled() &&
-		!isPublic &&
-		!isWebSessionValid(event.cookies.get(WEB_SESSION_COOKIE))
-	) {
+	const isPublic =
+		PUBLIC_PATHS.has(pathname) || pathname === '/_app' || pathname.startsWith('/_app/');
+	if (!isPublic && !user) {
 		const destination = `${pathname}${search}`;
 		redirect(303, `/login?next=${encodeURIComponent(destination)}`);
 	}

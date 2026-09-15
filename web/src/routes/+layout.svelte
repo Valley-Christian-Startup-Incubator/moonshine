@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { toastState } from '$lib/toast.svelte';
 
-	let { children } = $props();
+	let { children, data } = $props();
 	const toasts = toastState();
 
 	const navItems = [
@@ -34,6 +34,8 @@
 						{item.label}
 					</a>
 				{/each}
+				{#if data.user}
+				<span class="self-center px-2 text-xs text-emerald-300">{data.user.username}</span>
 				<form method="POST" action="/logout">
 					<button
 						type="submit"
@@ -42,6 +44,7 @@
 						Sign out
 					</button>
 				</form>
+				{/if}
 			</nav>
 		</div>
 	</header>

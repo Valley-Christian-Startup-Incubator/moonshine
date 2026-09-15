@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Flush trainer reports promptly for the live dashboard.
+export PYTHONUNBUFFERED=1
+
 TEACHER_MODEL="$1"
 STUDENT_MODEL="$2"
 INPUT_FILE="$3"

@@ -1,0 +1,20 @@
+{
+  "seed": 20260828,
+  "train_count": 217,
+  "eval_count": 74,
+  "train_by_family": {
+    "triad_spelling": 77,
+    "chord_quality": 40,
+    "key_signature": 22,
+    "interval": 78
+  },
+  "eval_by_family": {
+    "triad_spelling": 28,
+    "interval": 26,
+    "chord_quality": 12,
+    "key_signature": 8
+  },
+  "exact_prompt_overlap": 0,
+  "train_sha256": "caa389da0020243fa09abce12308824f0217bd00db13927124544213a34d1dc0",
+  "eval_sha256": "1abb811dc3ebb87432865f5ad329c62465950b1e586d74c59dc0ed5b8e388df5"
+}

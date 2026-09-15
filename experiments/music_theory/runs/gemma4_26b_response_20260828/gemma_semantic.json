@@ -1,0 +1,326 @@
+{
+  "scoring": "exploratory deterministic semantic normalization",
+  "models": {
+    "gemma26b": {
+      "passed": 51,
+      "total": 74,
+      "accuracy": 0.6891891891891891,
+      "by_family": {
+        "chord_quality": {
+          "passed": 7,
+          "total": 12
+        },
+        "interval": {
+          "passed": 17,
+          "total": 26
+        },
+        "key_signature": {
+          "passed": 8,
+          "total": 8
+        },
+        "triad_spelling": {
+          "passed": 19,
+          "total": 28
+        }
+      },
+      "cases": [
+        {
+          "id": "music-eval-001",
+          "passed": false
+        },
+        {
+          "id": "music-eval-002",
+          "passed": false
+        },
+        {
+          "id": "music-eval-003",
+          "passed": false
+        },
+        {
+          "id": "music-eval-004",
+          "passed": true
+        },
+        {
+          "id": "music-eval-005",
+          "passed": true
+        },
+        {
+          "id": "music-eval-006",
+          "passed": true
+        },
+        {
+          "id": "music-eval-007",
+          "passed": true
+        },
+        {
+          "id": "music-eval-008",
+          "passed": true
+        },
+        {
+          "id": "music-eval-009",
+          "passed": false
+        },
+        {
+          "id": "music-eval-010",
+          "passed": false
+        },
+        {
+          "id": "music-eval-011",
+          "passed": true
+        },
+        {
+          "id": "music-eval-012",
+          "passed": true
+        },
+        {
+          "id": "music-eval-013",
+          "passed": true
+        },
+        {
+          "id": "music-eval-014",
+          "passed": true
+        },
+        {
+          "id": "music-eval-015",
+          "passed": true
+        },
+        {
+          "id": "music-eval-016",
+          "passed": false
+        },
+        {
+          "id": "music-eval-017",
+          "passed": true
+        },
+        {
+          "id": "music-eval-018",
+          "passed": true
+        },
+        {
+          "id": "music-eval-019",
+          "passed": true
+        },
+        {
+          "id": "music-eval-020",
+          "passed": true
+        },
+        {
+          "id": "music-eval-021",
+          "passed": true
+        },
+        {
+          "id": "music-eval-022",
+          "passed": false
+        },
+        {
+          "id": "music-eval-023",
+          "passed": false
+        },
+        {
+          "id": "music-eval-024",
+          "passed": true
+        },
+        {
+          "id": "music-eval-025",
+          "passed": true
+        },
+        {
+          "id": "music-eval-026",
+          "passed": true
+        },
+        {
+          "id": "music-eval-027",
+          "passed": true
+        },
+        {
+          "id": "music-eval-028",
+          "passed": true
+        },
+        {
+          "id": "music-eval-029",
+          "passed": false
+        },
+        {
+          "id": "music-eval-030",
+          "passed": true
+        },
+        {
+          "id": "music-eval-031",
+          "passed": false
+        },
+        {
+          "id": "music-eval-032",
+          "passed": true
+        },
+        {
+          "id": "music-eval-033",
+          "passed": true
+        },
+        {
+          "id": "music-eval-034",
+          "passed": true
+        },
+        {
+          "id": "music-eval-035",
+          "passed": false
+        },
+        {
+          "id": "music-eval-036",
+          "passed": true
+        },
+        {
+          "id": "music-eval-037",
+          "passed": false
+        },
+        {
+          "id": "music-eval-038",
+          "passed": true
+        },
+        {
+          "id": "music-eval-039",
+          "passed": true
+        },
+        {
+          "id": "music-eval-040",
+          "passed": true
+        },
+        {
+          "id": "music-eval-041",
+          "passed": true
+        },
+        {
+          "id": "music-eval-042",
+          "passed": false
+        },
+        {
+          "id": "music-eval-043",
+          "passed": true
+        },
+        {
+          "id": "music-eval-044",
+          "passed": true
+        },
+        {
+          "id": "music-eval-045",
+          "passed": true
+        },
+        {
+          "id": "music-eval-046",
+          "passed": true
+        },
+        {
+          "id": "music-eval-047",
+          "passed": false
+        },
+        {
+          "id": "music-eval-048",
+          "passed": true
+        },
+        {
+          "id": "music-eval-049",
+          "passed": true
+        },
+        {
+          "id": "music-eval-050",
+          "passed": true
+        },
+        {
+          "id": "music-eval-051",
+          "passed": true
+        },
+        {
+          "id": "music-eval-052",
+          "passed": true
+        },
+        {
+          "id": "music-eval-053",
+          "passed": true
+        },
+        {
+          "id": "music-eval-054",
+          "passed": false
+        },
+        {
+          "id": "music-eval-055",
+          "passed": false
+        },
+        {
+          "id": "music-eval-056",
+          "passed": true
+        },
+        {
+          "id": "music-eval-057",
+          "passed": true
+        },
+        {
+          "id": "music-eval-058",
+          "passed": true
+        },
+        {
+          "id": "music-eval-059",
+          "passed": true
+        },
+        {
+          "id": "music-eval-060",
+          "passed": true
+        },
+        {
+          "id": "music-eval-061",
+          "passed": false
+        },
+        {
+          "id": "music-eval-062",
+          "passed": false
+        },
+        {
+          "id": "music-eval-063",
+          "passed": true
+        },
+        {
+          "id": "music-eval-064",
+          "passed": false
+        },
+        {
+          "id": "music-eval-065",
+          "passed": true
+        },
+        {
+          "id": "music-eval-066",
+          "passed": false
+        },
+        {
+          "id": "music-eval-067",
+          "passed": true
+        },
+        {
+          "id": "music-eval-068",
+          "passed": true
+        },
+        {
+          "id": "music-eval-069",
+          "passed": false
+        },
+        {
+          "id": "music-eval-070",
+          "passed": true
+        },
+        {
+          "id": "music-eval-071",
+          "passed": true
+        },
+        {
+          "id": "music-eval-072",
+          "passed": false
+        },
+        {
+          "id": "music-eval-073",
+          "passed": false
+        },
+        {
+          "id": "music-eval-074",
+          "passed": true
+        }
+      ]
+    }
+  }
+}

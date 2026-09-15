@@ -3,6 +3,7 @@ import path from 'node:path';
 import { JOBS_DIR, RESULTS_DIR } from './env';
 import { enqueueDag, getQueuePosition, cancelDagRun } from './dagu';
 import type { JobParams, JobRecord, JobStatus, JobType, StatusFile, Team } from '../types';
+import type { AuthenticatedUser } from './auth';
 
 export const DAG_NAME_FOR_TYPE: Record<JobType, string> = {
 	'prompt-gen': 'prompt-gen',
@@ -14,6 +15,8 @@ export const DAG_NAME_FOR_TYPE: Record<JobType, string> = {
 
 interface JobMeta {
 	id: string;
+	ownerId?: string;
+	ownerName?: string;
 	team: Team;
 	type: JobType;
 	params: JobParams;
@@ -107,6 +110,8 @@ export async function listJobs(): Promise<JobRecord[]> {
 		const resolved = await resolveStatus(id, meta);
 		jobs.push({
 			id: meta.id,
+			ownerId: meta.ownerId,
+			ownerName: meta.ownerName,
 			team: meta.team,
 			type: meta.type,
 			status: resolved.status,
@@ -131,6 +136,8 @@ export async function getJob(jobId: string): Promise<JobRecord | null> {
 	const resolved = await resolveStatus(jobId, meta);
 	return {
 		id: meta.id,
+		ownerId: meta.ownerId,
+		ownerName: meta.ownerName,
 		team: meta.team,
 		type: meta.type,
 		status: resolved.status,
@@ -181,7 +188,8 @@ export async function getJobDiagnosis(jobId: string): Promise<JobDiagnosis> {
 /** Resubmits a job's original input file under a new job id, merging in overridden params. */
 export async function retryJobWithParams(
 	jobId: string,
-	overrideParams: JobParams
+	overrideParams: JobParams,
+	owner: Pick<AuthenticatedUser, 'id' | 'username'>
 ): Promise<string> {
 	const meta = await readJson<JobMeta>(metaPath(jobId));
 	if (!meta) throw new Error(`Job ${jobId} not found`);
@@ -190,6 +198,8 @@ export async function retryJobWithParams(
 	const newId = nanoid(10);
 	await submitJob({
 		id: newId,
+		ownerId: owner.id,
+		ownerName: owner.username,
 		team: meta.team,
 		type: meta.type,
 		params: { ...meta.params, ...overrideParams },

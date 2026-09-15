@@ -25,7 +25,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request }) => {
+	default: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, { error: 'Please sign in before submitting a job.' });
 		const form = await request.formData();
 
 		const team = form.get('team') as Team | null;
@@ -112,6 +113,8 @@ export const actions: Actions = {
 		try {
 			await submitJob({
 				id: jobId,
+				ownerId: locals.user.id,
+				ownerName: locals.user.username,
 				team,
 				type,
 				params,

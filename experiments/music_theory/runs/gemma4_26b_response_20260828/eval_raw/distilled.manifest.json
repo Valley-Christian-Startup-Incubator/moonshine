@@ -1,0 +1,17 @@
+{
+  "eval_sha256": "1abb811dc3ebb87432865f5ad329c62465950b1e586d74c59dc0ed5b8e388df5",
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "adapter": {
+    "path": "/Users/aimac/.distill/results/manual-music-theory-gemma26b-response-20260828/adapter",
+    "adapter_config.json": {
+      "size": 1104,
+      "mtime_ns": 1787966049799241749
+    },
+    "adapters.safetensors": {
+      "size": 11754630,
+      "mtime_ns": 1787966119454614813
+    }
+  },
+  "max_tokens": 40,
+  "system_prompt": null
+}

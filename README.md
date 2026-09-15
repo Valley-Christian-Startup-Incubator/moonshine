@@ -10,11 +10,23 @@ a time (strict FIFO), so everyone shares the machine fairly.
 ## For students: use the dashboard
 
 You do not need the command line or access to the Mac Studio. Open the web
-address your instructor gives you, enter the shared password, then:
+address your instructor gives you, create an account, and sign in. When an
+invite code is configured, use the code from your instructor during account
+registration. The invite code is only for creating accounts; each account has
+its own password.
+
+Jobs and results are shared across accounts because they run on one classroom
+Mac. The Jobs page starts with **My runs** and can be switched to **Everyone's
+runs**. Older runs created before accounts were added have no owner and appear
+as **Unassigned**.
+
+Then:
 
 1. Open **Lab**. Choose **Quick tour** for highlighted controls, or an info icon for an explanation.
 2. **Generate:** start from topics or upload your own questions for teacher answers.
    Browse samples before submitting, and download completed results from **Jobs**.
+   Single-file results download as standalone files; directory results such as
+   models and adapters download as `.tar.gz` archives.
 3. **Split:** upload the teacher Q&A in your browser. Choose 80/20, 85/15, or
    90/10 training/validation and freeze the split. Download both files and the
    split record before leaving the page.
@@ -68,8 +80,10 @@ The checks verify model files, not parameter count or inference. An unconfigured
 cannot be submitted. Ollama model blobs are not MLX training directories.
 
 Training and quantization still run on the shared Studio and store weights
-there. Student-machine training and weight transfer are not implemented by this
-UI update. The evaluation page describes top-1 next-token agreement (higher is
+there. Completed model folders and adapters can be downloaded from the job page.
+Fine-tuning and distillation produce LoRA adapters that require the original base
+model; the archive is not a merged standalone model. Student-machine training is
+not implemented. The evaluation page describes top-1 next-token agreement (higher is
 better) and perplexity on teacher answer tokens (lower is better); the existing
 evaluation script below scores answers instead of these token metrics.
 
@@ -106,12 +120,14 @@ variables explicitly:
 
 ```bash
 WEB_PORT=3001 \
-WEB_PASSWORD='shared classroom password' \
+WEB_PASSWORD='classroom invite code' \
 ADMIN_PASSWORD='operator password' \
 ./setup.sh
 ```
 
-Port `3000` is the default. If another service already uses it, setup stops
+`WEB_PASSWORD` is the classroom invite code used when creating accounts. If it
+is empty, registration is open. It is not a shared sign-in password. Port
+`3000` is the default. If another service already uses it, setup stops
 with a clear error so you can re-run with `WEB_PORT=<free-port>`. Dagu uses
 port `8081` by default and can similarly be changed with `DAGU_PORT`.
 
@@ -194,9 +210,9 @@ read-only Pydantic AI agent and return schema-validated retry parameters.
 
 ## What's intentionally not here
 
-No individual user accounts or per-team permissions, no email notifications,
-no CLI client, and no automatic data retention/cleanup. The web UI uses one
-shared password; the admin and Dagu operator surfaces have separate credentials.
+No per-team permissions, email notifications, CLI client, or automatic data
+retention/cleanup. The web UI has individual accounts with shared job
+visibility; the admin and Dagu operator surfaces have separate credentials.
 
 ## For contributors
 

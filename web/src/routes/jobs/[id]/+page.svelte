@@ -5,6 +5,7 @@
 	import type { ActionData, PageData } from './$types';
 	import { statusBadgeClass, formatDuration, formatTimestamp } from '$lib/format';
 	import { JOB_TYPES, JOB_TYPE_FIELDS } from '$lib/types';
+	import RunActivity from '$lib/components/RunActivity.svelte';
 	import { pushToast } from '$lib/toast.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -47,10 +48,10 @@
 			<h1 class="font-mono text-lg font-semibold text-zinc-100">{data.job.id}</h1>
 			<span class={statusBadgeClass(data.job.status)}>{data.job.status}</span>
 		</div>
-		<p class="mt-1 text-sm text-zinc-400">{data.job.team} · {jobType.label}</p>
+		<p class="mt-1 text-sm text-zinc-400">{data.job.ownerName ?? 'Unassigned'} · {data.job.team} · {jobType.label}</p>
 	</div>
 	{#if data.job.status === 'complete'}
-		<a href="/jobs/{data.job.id}/download" class="btn-primary">Download result</a>
+		<a href="/jobs/{data.job.id}/download" class="btn-primary">{data.job.type === 'finetune' || data.job.type === 'distill' ? 'Download adapter' : data.job.type === 'quantize' ? 'Download model' : 'Download result'}</a>
 	{/if}
 </div>
 
@@ -88,6 +89,12 @@
 			</div>
 		{/if}
 	</div>
+{/if}
+
+{#if data.job.status === 'running' || data.job.status === 'queued'}
+	{#key data.job.id}
+		<RunActivity job={data.job} log={data.log} excerpts={data.excerpts} />
+	{/key}
 {/if}
 
 <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

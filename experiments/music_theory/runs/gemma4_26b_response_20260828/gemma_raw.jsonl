@@ -1,0 +1,291 @@
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-Gb-Bb"}
+{"prompt": "Identify the triad quality of Gb-Bb-D. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Db-F-Ab"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F#-A#-C#"}
+{"prompt": "Give the key signature of C minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "3 flats: Bb, Eb, Ab"}
+{"prompt": "Name the ascending interval from Gb to Abb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from B to C#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M2"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-A-C"}
+{"prompt": "Name the ascending interval from D to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Name the ascending interval from G up one octave to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Identify the triad quality of E-G#-B. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from C to Eb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-G-C"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-F"}
+{"prompt": "Name the ascending interval from F# to C#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Name the ascending interval from Bb to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Name the ascending interval from Gb to Dbb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A5"}
+{"prompt": "Identify the triad quality of Ab-Cb-Ebb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F-Ab"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G-B"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D#-F#-A#"}
+{"prompt": "Name the ascending interval from C to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Identify the triad quality of A-C-Eb. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from G to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M2"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Identify the triad quality of Db-F-A. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from C to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M2"}
+{"prompt": "Name the ascending interval from Db to Ebb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from C to Gb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-D-F"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-G-Bb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Name the ascending interval from Gb to Fb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-G-Bb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Identify the triad quality of C-E-G#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Name the ascending interval from B to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Fb-Ab-Cb"}
+{"prompt": "Identify the triad quality of F-A-C#. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Name the ascending interval from C to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F#-A#-C#"}
+{"prompt": "Name the ascending interval from Bb to Gb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-Ab-C"}
+{"prompt": "Identify the triad quality of Db-F-Ab. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from F to Db. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Name the ascending interval from Db to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Name the ascending interval from Db to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from D to Eb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from Eb to Cb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from Db to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D#-F#"}
+{"prompt": "Name the ascending interval from Ab to Fb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from C# to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Name the ascending interval from F to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Cb-Eb-Gb"}
+{"prompt": "Name the ascending interval from C# to G#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Identify the triad quality of G-B-D#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D#-F#"}
+{"prompt": "Give the key signature of D# minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "6 sharps: F#, C#, G#, D#, A#, E#"}
+{"prompt": "Give the key signature of E minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "1 sharp: F#"}
+{"prompt": "Identify the triad quality of A-C#-E#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Identify the triad quality of F#-A#-C#. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from Ab to Ebb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "d2"}
+{"prompt": "Give the key signature of Gb major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "6 flats: Bb, Eb, Ab, Db, Gb, Cb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Name the ascending interval from D to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Give the key signature of C major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "0 accidentals"}
+{"prompt": "Name the ascending interval from Db to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Identify the triad quality of Bb-Db-Fb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Give the key signature of F minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "4 flats: Bb, Eb, Ab, Db"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "f-a-c"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Name the ascending interval from C# to B#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Identify the triad quality of F#-A-C#. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D#-F#"}
+{"prompt": "Identify the triad quality of C-Eb-G. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-Ab-C"}
+{"prompt": "Identify the triad quality of Db-Fb-Abb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from D to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Identify the triad quality of C-E-G. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Give the key signature of Eb major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "3 flats: Bb, Eb, Ab"}
+{"prompt": "Name the ascending interval from G to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C-E"}
+{"prompt": "Give the key signature of Eb minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "6 flats: Bb, Eb, Ab, Db, Gb, Cb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Gb-Bb-Db"}
+{"prompt": "Identify the triad quality of G-Bb-D. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from Ab to Eb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Name the ascending interval from E to C#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M6"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Ab-C-Eb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Name the ascending interval from C# to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from A up one octave to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Name the ascending interval from F# to D#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from D to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Identify the triad quality of C#-E#-G##. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Name the ascending interval from C# to E#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-Ab-C"}
+{"prompt": "Give the key signature of Bb minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "5 flats: Bb, Eb, Ab, Db, Gb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G#-C#-E#"}
+{"prompt": "Name the ascending interval from Gb up one octave to Gb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Identify the triad quality of Gb-Bbb-Db. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Identify the triad quality of F#-A#-C##. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F#-A#-C#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G#-B-D#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C-E"}
+{"prompt": "Name the ascending interval from Ab to Db. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Name the ascending interval from F# to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Identify the triad quality of B-D-F#. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C#-E-G#"}
+{"prompt": "Name the ascending interval from Eb to Ab. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Give the key signature of F# minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "3 sharps: F#, C#, G#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-Bb-Db"}
+{"prompt": "Name the ascending interval from G to Ab. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from F to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-F"}
+{"prompt": "Name the ascending interval from C to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-Fb"}
+{"prompt": "Give the key signature of E major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "4 sharps: F#, C#, G#, D#"}
+{"prompt": "Identify the triad quality of C-Eb-Gb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Name the ascending interval from Db to Fb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C-E"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Identify the triad quality of Bb-D-F. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from Eb to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M2"}
+{"prompt": "Identify the triad quality of E-G-Bb. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Name the ascending interval from F# to E#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Name the ascending interval from D up one octave to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Name the ascending interval from G to C#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Name the ascending interval from Db to Abb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A5"}
+{"prompt": "Name the ascending interval from Eb to Gb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Name the ascending interval from Eb up one octave to Eb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G#-B-D#"}
+{"prompt": "Name the ascending interval from Gb to Eb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Give the key signature of B minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "2 sharps: F#, C#"}
+{"prompt": "Identify the triad quality of D-F#-A#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Give the key signature of Ab minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "7 flats: Bb, Eb, Ab, Db, Gb, Cb, Fb"}
+{"prompt": "Name the ascending interval from Bb to Db. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-Fb"}
+{"prompt": "Give the key signature of G# minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "5 sharps: F#, C#, G#, D#, A#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C-E"}
+{"prompt": "Identify the triad quality of Eb-Gb-Bb. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from Eb to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Give the key signature of D major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "2 sharps: F#, C#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Identify the triad quality of D-F-A. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from C# to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F-A"}
+{"prompt": "Identify the triad quality of A-C#-E. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from F# to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Name the ascending interval from B to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Identify the triad quality of D-F-Ab. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from C# to D#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from Bb to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D#-F#"}
+{"prompt": "Identify the triad quality of B-D#-F#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Give the key signature of C# major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "7 sharps: F#, C#, G#, D#, A#, E#, B#"}
+{"prompt": "Give the key signature of A major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "3 sharps: F#, C#, G#"}
+{"prompt": "Identify the triad quality of D-F#-A. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Db-F-Ab"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-A-C"}
+{"prompt": "Give the key signature of B major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "5 sharps: F#, C#, G#, D#, A#"}
+{"prompt": "Name the ascending interval from C to Db. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from E to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Identify the triad quality of Gb-Bbb-Dbb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Identify the triad quality of G-Bb-Db. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from Db to Ab. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Identify the triad quality of Db-Fb-Ab. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Name the ascending interval from F up one octave to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Name the ascending interval from G to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Identify the triad quality of Eb-Gb-Bbb. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from A to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Give the key signature of G major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "1 sharp: F#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C#-E-G#"}
+{"prompt": "Identify the triad quality of G-B-D. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from G to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Identify the triad quality of Bb-Db-F. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F-Ab"}
+{"prompt": "Name the ascending interval from Eb to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in F# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G#-B"}
+{"prompt": "Identify the triad quality of Eb-G-B. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from G to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Bb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F-Ab"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Name the ascending interval from Bb to E. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G-B"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-Gb-Bb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Db-Fb-Ab"}
+{"prompt": "Name the ascending interval from G to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Give the key signature of Bb major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "2 flats: Bb, Eb"}
+{"prompt": "Name the ascending interval from F to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M2"}
+{"prompt": "Name the ascending interval from G to E. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Give the key signature of D minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "1 flat: Bb"}
+{"prompt": "Identify the triad quality of Gb-Bb-Db. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D-F"}
+{"prompt": "Give the key signature of Ab major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "4 flats: Bb, Eb, Ab, Db"}
+{"prompt": "Identify the triad quality of F-Ab-C. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-A-C"}
+{"prompt": "Name the ascending interval from E to D#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Name the ascending interval from Gb to Ebb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Ab-C-Eb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Ab-Cb-Eb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Name the ascending interval from F# to G#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Name the ascending interval from Bb up one octave to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D-F#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-G-Bb"}
+{"prompt": "Name the ascending interval from A to E. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Eb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-D-F"}
+{"prompt": "Identify the triad quality of F-A-C. Reply only with major, minor, diminished, or augmented.", "completion": "minor"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Identify the triad quality of C#-E#-G#. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from D to G#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in F major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-A-C"}
+{"prompt": "Name the ascending interval from C# to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Name the ascending interval from E to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "D-F#-A"}
+{"prompt": "Name the ascending interval from B to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Give the key signature of C# minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "4 sharps: F#, C#, G#, D#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Db-F-Ab"}
+{"prompt": "Name the ascending interval from E to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P5"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Ab-C-Eb"}
+{"prompt": "Name the ascending interval from B to A#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Name the ascending interval from Bb to A. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from F# up one octave to F#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P8"}
+{"prompt": "Name the ascending interval from D to F. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Identify the triad quality of B-D-F. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Name the ascending interval from A to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Give the key signature of F major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "1 flat: Bb"}
+{"prompt": "Identify the triad quality of C#-E-G#. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Name the ascending interval from Bb to Fb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "d5"}
+{"prompt": "Name the ascending interval from Gb to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G-B"}
+{"prompt": "Identify the triad quality of Eb-G-Bb. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F#-A-C#"}
+{"prompt": "Identify the triad quality of A-C-E. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Give the key signature of F# major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "6 sharps: F#, C#, G#, D#, A#, E#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in A major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Identify the triad quality of F#-A-C. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Gb-Bb-Db"}
+{"prompt": "Identify the triad quality of C#-E-G. Reply only with major, minor, diminished, or augmented.", "completion": "diminished"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in Db major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C-E-G"}
+{"prompt": "Give the key signature of A# minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "7 sharps: F#, C#, G#, D#, A#, E#, B#"}
+{"prompt": "Give the key signature of Cb major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "7 flats: Bb, Eb, Ab, Db, Gb, Cb, Fb"}
+{"prompt": "Name the ascending interval from B to D#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "M3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Ab-Cb-Eb"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Gb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-Fb"}
+{"prompt": "Name the ascending interval from A to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Give the key signature of G minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "2 flats: Bb, Eb"}
+{"prompt": "Name the ascending interval from A to D#. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 3 in Cb major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Eb-Gb-Bb"}
+{"prompt": "Identify the triad quality of B-D#-F##. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C#-E#-G#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 7 in G major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F-A-C"}
+{"prompt": "Name the ascending interval from Bb to G. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m3"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in Ab major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "Bb-Db-F"}
+{"prompt": "Name the ascending interval from E to D. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m7"}
+{"prompt": "Name the ascending interval from E to C. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 2 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "C#-E-G#"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in E major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "A-C#-E"}
+{"prompt": "Name the ascending interval from Db to Cb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from D to B. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m6"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 5 in C major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "G-B-D"}
+{"prompt": "Name the ascending interval from Eb to Bbb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "A6"}
+{"prompt": "Give the key signature of A minor. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "0 accidentals"}
+{"prompt": "Name the ascending interval from Gb to Ab. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "m2"}
+{"prompt": "Name the ascending interval from F to Bb. Reply only with a standard abbreviated interval such as m3, M3, P5, A4, or d5.", "completion": "P4"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 4 in C# major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "F#-A#-C#"}
+{"prompt": "Identify the triad quality of Ab-C-E. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 1 in B major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "B-D#-F#"}
+{"prompt": "Identify the triad quality of E-G#-B#. Reply only with major, minor, diminished, or augmented.", "completion": "augmented"}
+{"prompt": "Spell the root-position diatonic triad on scale degree 6 in D major. Reply only with the three note names, root to fifth, joined by hyphens.", "completion": "E-G-B"}
+{"prompt": "Identify the triad quality of E-G-B. Reply only with major, minor, diminished, or augmented.", "completion": "major"}
+{"prompt": "Give the key signature of Db major. List accidentals in conventional order. Use exactly the format '3 flats: Bb, Eb, Ab', '2 sharps: F#, C#', or '0 accidentals'.", "completion": "5 flats: Bb, Eb, Ab, Db, Gb"}

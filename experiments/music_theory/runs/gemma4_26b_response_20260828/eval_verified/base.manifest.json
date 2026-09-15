@@ -1,0 +1,7 @@
+{
+  "eval_sha256": "1abb811dc3ebb87432865f5ad329c62465950b1e586d74c59dc0ed5b8e388df5",
+  "model": "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "adapter": null,
+  "max_tokens": 40,
+  "system_prompt": null
+}

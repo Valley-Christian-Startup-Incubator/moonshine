@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Flush trainer reports promptly for the live dashboard.
+export PYTHONUNBUFFERED=1
+
 MODEL_PATH="$1"
 INPUT_FILE="$2"
 ADAPTER_DIR="$3"

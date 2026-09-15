@@ -10,6 +10,8 @@ export interface JobParams {
 
 export interface JobRecord {
 	id: string;
+	ownerId?: string;
+	ownerName?: string;
 	team: Team;
 	type: JobType;
 	status: JobStatus;
