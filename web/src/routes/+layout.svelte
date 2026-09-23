@@ -35,7 +35,6 @@
 					</a>
 				{/each}
 				{#if data.user}
-				<span class="self-center px-2 text-xs text-emerald-300">{data.user.username}</span>
 				<form method="POST" action="/logout">
 					<button
 						type="submit"

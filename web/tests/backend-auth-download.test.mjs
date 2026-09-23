@@ -1,63 +1,41 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-test('account credentials, invite registration, sessions, and result path checks', async () => {
+test('shared password sessions and result path checks', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'moonshine-backend-'));
 	const distillHome = path.join(root, 'distill');
 	process.env.DISTILL_HOME = distillHome;
-	process.env.WEB_PASSWORD = 'classroom-invite';
+	process.env.WEB_PASSWORD = 'shared-password';
 
 	const auth = await import('../src/lib/server/auth.ts');
 	const downloads = await import('../src/lib/server/downloads.ts');
 	try {
-		assert.equal(auth.normalizeUsername('Alice_01'), 'alice_01');
-		assert.equal(auth.normalizeUsername('ab'), null);
-		assert.equal(auth.normalizeUsername('bad name'), null);
-		assert.equal(auth.normalizeUsername('Kelvin'), null);
+		assert.deepEqual(auth.authenticateUser('shared-password'), { id: 'shared' });
+		assert.equal(auth.authenticateUser('wrong-password'), null);
+		assert.equal(auth.authenticateUser(''), null);
 		assert.equal(auth.safeNextPath('/jobs/a?tab=log'), '/jobs/a?tab=log');
 		assert.equal(auth.safeNextPath('//evil.example/'), '/');
 		assert.equal(auth.safeNextPath('/\\evil.example/'), '/');
 
-		await assert.rejects(
-			auth.registerAccount('Alice_01', 'long-enough-password', 'wrong-invite'),
-			(error) => error instanceof auth.InvalidInviteCodeError
-		);
-		const user = await auth.registerAccount('Alice_01', 'long-enough-password', 'classroom-invite');
-		assert.equal(user.username, 'alice_01');
-		assert.deepEqual(await auth.authenticateUser('ALICE_01', 'long-enough-password'), user);
-		assert.equal(await auth.authenticateUser('alice_01', 'wrong-password'), null);
-
-		const accountFiles = await readdir(auth.ACCOUNTS_DIR);
-		assert.deepEqual(accountFiles, ['alice_01.json']);
-		assert.equal((await stat(path.join(auth.ACCOUNTS_DIR, accountFiles[0]))).mode & 0o777, 0o600);
-		const accountText = await readFile(path.join(auth.ACCOUNTS_DIR, accountFiles[0]), 'utf8');
-		assert.equal(accountText.includes('long-enough-password'), false);
-		assert.equal(accountText.includes('classroom-invite'), false);
-
-		const attempts = await Promise.allSettled(
-			Array.from({ length: 8 }, () =>
-				auth.registerAccount('Race_User', 'long-enough-password', 'classroom-invite')
-			)
-		);
-		assert.equal(attempts.filter((attempt) => attempt.status === 'fulfilled').length, 1);
-		assert.equal(attempts.filter((attempt) => attempt.status === 'rejected').length, 7);
-
-		const token = await auth.createSession(user);
+		const token = await auth.createSession();
 		assert.match(token, /^[A-Za-z0-9_-]{43}$/);
-		assert.deepEqual(await auth.resolveSession(token), user);
+		assert.deepEqual(await auth.resolveSession(token), { id: 'shared' });
 		const sessionFile = path.join(
 			auth.SESSIONS_DIR,
 			`${createHash('sha256').update(token).digest('hex')}.json`
 		);
 		assert.equal((await stat(sessionFile)).mode & 0o777, 0o600);
-		assert.equal((await readFile(sessionFile, 'utf8')).includes(token), false);
+		const sessionText = await readFile(sessionFile, 'utf8');
+		assert.equal(sessionText.includes(token), false);
+		assert.equal(sessionText.includes('shared-password'), false);
+
 		await auth.revokeSession(token);
 		assert.equal(await auth.resolveSession(token), null);
-		const expiredToken = await auth.createSession(user);
+		const expiredToken = await auth.createSession();
 		const expiredPath = path.join(
 			auth.SESSIONS_DIR,
 			`${createHash('sha256').update(expiredToken).digest('hex')}.json`
@@ -68,9 +46,8 @@ test('account credentials, invite registration, sessions, and result path checks
 		assert.equal(await auth.resolveSession(expiredToken), null);
 
 		process.env.WEB_PASSWORD = '';
-		const openAuth = await import('../src/lib/server/auth.ts?open-registration');
-		const openUser = await openAuth.registerAccount('Open_User', 'another-long-password', '');
-		assert.equal(openUser.username, 'open_user');
+		const unconfiguredAuth = await import('../src/lib/server/auth.ts?missing-password');
+		assert.equal(unconfiguredAuth.authenticateUser('shared-password'), null);
 
 		const resultDir = path.join(distillHome, 'results', 'job-1');
 		const nestedDir = path.join(resultDir, 'nested', 'adapters');

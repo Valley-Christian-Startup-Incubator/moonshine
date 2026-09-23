@@ -10,15 +10,8 @@ a time (strict FIFO), so everyone shares the machine fairly.
 ## For students: use the dashboard
 
 You do not need the command line or access to the Mac Studio. Open the web
-address your instructor gives you, create an account, and sign in. When an
-invite code is configured, use the code from your instructor during account
-registration. The invite code is only for creating accounts; each account has
-its own password.
-
-Jobs and results are shared across accounts because they run on one classroom
-Mac. The Jobs page starts with **My runs** and can be switched to **Everyone's
-runs**. Older runs created before accounts were added have no owner and appear
-as **Unassigned**.
+address your instructor gives you and enter the shared student password. Jobs
+and results are visible to everyone using the classroom Mac.
 
 Then:
 
@@ -75,7 +68,7 @@ the server and is never sent to the browser. A student can also use **Sign in
 with ChatGPT** in the planning chat to use their own account for that chat.
 This uses the third-party `openai-oauth` package and needs its Chrome or Firefox
 extension for the browser sign-in callback. The student may disconnect in the
-chat. Moonshine account sign-in remains separate from model access.
+chat. Moonshine shared-password sign-in remains separate from model access.
 
 To set up the teacher, an instructor opens **Configure teacher**, signs in, and
 enters the full path to the installed Qwen MLX folder on the computer running
@@ -136,14 +129,13 @@ variables explicitly:
 
 ```bash
 WEB_PORT=3001 \
-WEB_PASSWORD='classroom invite code' \
+WEB_PASSWORD='shared student password' \
 ADMIN_PASSWORD='operator password' \
 ./setup.sh
 ```
 
-`WEB_PASSWORD` is the classroom invite code used when creating accounts. If it
-is empty, registration is open. It is not a shared sign-in password. Port
-`3000` is the default. If another service already uses it, setup stops
+`WEB_PASSWORD` is the shared password students use to sign in. Port `3000` is
+the default. If another service already uses it, setup stops
 with a clear error so you can re-run with `WEB_PORT=<free-port>`. Dagu uses
 port `8081` by default and can similarly be changed with `DAGU_PORT`.
 
@@ -227,8 +219,8 @@ read-only Pydantic AI agent and return schema-validated retry parameters.
 ## What's intentionally not here
 
 No per-team permissions, email notifications, CLI client, or automatic data
-retention/cleanup. The web UI has individual accounts with shared job
-visibility; the admin and Dagu operator surfaces have separate credentials.
+retention/cleanup. The web UI uses one shared student password and has no
+per-user accounts; the admin and Dagu operator surfaces have separate credentials.
 
 ## For contributors
 

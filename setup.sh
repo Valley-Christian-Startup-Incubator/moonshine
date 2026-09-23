@@ -359,7 +359,7 @@ cat <<SUMMARY
  Distillation Job Scheduler — setup complete
 ────────────────────────────────────────────────────────────────
  Student web UI:   http://${LAN_IP}:${WEB_PORT}   (also http://localhost:${WEB_PORT})
-   Account invite code: ${WEB_PASSWORD}
+   Student password: ${WEB_PASSWORD}
  Admin panel:      http://${LAN_IP}:${WEB_PORT}/admin
    Admin password: ${ADMIN_PASSWORD}
 

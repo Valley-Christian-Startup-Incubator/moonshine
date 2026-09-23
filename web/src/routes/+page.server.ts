@@ -128,7 +128,6 @@ export const actions: Actions = {
 			await submitJob({
 				id: jobId,
 				ownerId: locals.user.id,
-				ownerName: locals.user.username,
 				team,
 				type,
 				params,

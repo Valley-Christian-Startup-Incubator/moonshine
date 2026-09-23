@@ -48,7 +48,7 @@
 			<h1 class="font-mono text-lg font-semibold text-zinc-100">{data.job.id}</h1>
 			<span class={statusBadgeClass(data.job.status)}>{data.job.status}</span>
 		</div>
-		<p class="mt-1 text-sm text-zinc-400">{data.job.ownerName ?? 'Unassigned'} · {data.job.team} · {jobType.label}</p>
+		<p class="mt-1 text-sm text-zinc-400">{data.job.team} · {jobType.label}</p>
 	</div>
 	{#if data.job.status === 'complete'}
 		<a href="/jobs/{data.job.id}/download" class="btn-primary">{data.job.type === 'finetune' || data.job.type === 'distill' ? 'Download adapter' : data.job.type === 'quantize' ? 'Download model' : 'Download result'}</a>

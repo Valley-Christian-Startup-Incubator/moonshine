@@ -1,7 +1,7 @@
 import { redirect, type Handle } from '@sveltejs/kit';
 import { getUserFromSession, WEB_SESSION_COOKIE } from '$lib/server/auth';
 
-const PUBLIC_PATHS = new Set(['/login', '/register', '/favicon.svg']);
+const PUBLIC_PATHS = new Set(['/login', '/favicon.svg']);
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname, search } = event.url;

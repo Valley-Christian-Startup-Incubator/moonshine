@@ -189,7 +189,7 @@ export async function getJobDiagnosis(jobId: string): Promise<JobDiagnosis> {
 export async function retryJobWithParams(
 	jobId: string,
 	overrideParams: JobParams,
-	owner: Pick<AuthenticatedUser, 'id' | 'username'>
+	owner: Pick<AuthenticatedUser, 'id'>
 ): Promise<string> {
 	const meta = await readJson<JobMeta>(metaPath(jobId));
 	if (!meta) throw new Error(`Job ${jobId} not found`);
@@ -199,7 +199,6 @@ export async function retryJobWithParams(
 	await submitJob({
 		id: newId,
 		ownerId: owner.id,
-		ownerName: owner.username,
 		team: meta.team,
 		type: meta.type,
 		params: { ...meta.params, ...overrideParams },
