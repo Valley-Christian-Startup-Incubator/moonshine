@@ -22,7 +22,7 @@ async function inputExcerpts(inputFile: string): Promise<string[]> {
 		for (const line of buffer.subarray(0, bytesRead).toString('utf8').split('\n')) {
 			try {
 				const row = JSON.parse(line);
-				const text = row?.prompt ?? row?.topic ?? row?.text;
+				const text = row?.prompt ?? row?.generation_prompt ?? row?.topic ?? row?.text;
 				if (typeof text === 'string' && text.trim()) excerpts.push(text.replace(/\s+/g, ' ').trim().slice(0, 90));
 			} catch { /* The prefix may end partway through a JSONL record. */ }
 			if (excerpts.length === 4) break;

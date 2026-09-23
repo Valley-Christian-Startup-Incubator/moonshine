@@ -62,6 +62,8 @@ DIAGNOSTIC_MODEL="${DIAGNOSTIC_MODEL:-$(prev_env DIAGNOSTIC_MODEL)}"
 DIAGNOSTIC_MODEL="${DIAGNOSTIC_MODEL:-qwen3.8:27b-mlx}"
 DIAGNOSTIC_OLLAMA_URL="${DIAGNOSTIC_OLLAMA_URL:-$(prev_env DIAGNOSTIC_OLLAMA_URL)}"
 DIAGNOSTIC_OLLAMA_URL="${DIAGNOSTIC_OLLAMA_URL:-http://127.0.0.1:11434}"
+OPENAI_API_KEY="${OPENAI_API_KEY:-$(prev_env OPENAI_API_KEY)}"
+TOPIC_CHAT_MODEL="${TOPIC_CHAT_MODEL:-$(prev_env TOPIC_CHAT_MODEL)}"
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$1"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$1" >&2; }
@@ -221,6 +223,8 @@ BODY_SIZE_LIMIT=Infinity
 DIAGNOSTIC_AGENT=${DIAGNOSTIC_AGENT}
 DIAGNOSTIC_MODEL=${DIAGNOSTIC_MODEL}
 DIAGNOSTIC_OLLAMA_URL=${DIAGNOSTIC_OLLAMA_URL}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+TOPIC_CHAT_MODEL=${TOPIC_CHAT_MODEL}
 EOF
 chmod 600 "${ENV_FILE}"
 
@@ -298,11 +302,16 @@ cat > "${WEB_PLIST}" <<EOF
 		<key>WEB_PASSWORD</key><string>${WEB_PASSWORD}</string>
 		<key>PORT</key><string>${WEB_PORT}</string>
 		<key>BODY_SIZE_LIMIT</key><string>Infinity</string>
+		<key>DIAGNOSTIC_MODEL</key><string>${DIAGNOSTIC_MODEL}</string>
+		<key>DIAGNOSTIC_OLLAMA_URL</key><string>${DIAGNOSTIC_OLLAMA_URL}</string>
+		<key>OPENAI_API_KEY</key><string>${OPENAI_API_KEY}</string>
+		<key>TOPIC_CHAT_MODEL</key><string>${TOPIC_CHAT_MODEL}</string>
 	</dict>
 	<key>LimitLoadToSessionType</key><string>Background</string>
 </dict>
 </plist>
 EOF
+chmod 600 "${DAGU_PLIST}" "${WEB_PLIST}"
 
 log "Loading launchd services"
 LAUNCHD_DOMAIN="user/$(id -u)"

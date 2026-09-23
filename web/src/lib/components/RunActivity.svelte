@@ -12,6 +12,7 @@
 	const flowing = $derived(job.status === 'running' && !paused && !hidden);
 	const progress = $derived(trainingProgress(log, job.params.ITERS));
 	const training = $derived(job.type === 'finetune' || job.type === 'distill');
+	const generatingDataset = $derived(job.type === 'teacher-gen');
 	const curve = $derived.by(() => {
 		const points = progress.samples;
 		if (points.length < 2) return '';
@@ -147,7 +148,7 @@
 					{/each}
 				</div>
 			{/if}
-			<div class="model-label student">{distilling ? 'Student' : training ? 'Learning from examples' : 'Processing text'}</div>
+			<div class="model-label student">{distilling ? 'Student' : training ? 'Learning from examples' : generatingDataset ? 'Teacher generating Q&A' : 'Processing text'}</div>
 			{#if distilling}<div class="model-label teacher">Teacher</div>{/if}
 			<p class="absolute left-5 top-12 text-[10px] text-zinc-500">{job.status === 'queued' ? 'Text flow begins when the job starts' : excerpts.length ? 'Input excerpts · illustrative flow, not the current batch' : 'Example text · illustrative flow'}</p>
 			<div class="absolute bottom-4 left-5 right-5 flex items-center justify-between gap-3 text-[11px] text-zinc-500">
@@ -156,9 +157,9 @@
 			</div>
 		</div>
 		<div class="relative p-6 md:py-8 md:pr-8">
-			<p class="text-xs uppercase tracking-[0.2em] text-zinc-500">{training ? 'Training signal' : 'Run activity'}</p>
-			<h2 class="mt-3 text-2xl font-medium tracking-tight text-zinc-100">{job.status === 'queued' ? 'Your turn is coming.' : progress.latest ? 'Learning, one step at a time.' : 'The Studio is at work.'}</h2>
-			<p class="mt-2 text-sm leading-6 text-zinc-400">{job.status === 'queued' ? `Waiting for the shared Mac Studio${job.queuePosition ? ` · position ${job.queuePosition}` : ''}.` : progress.latest ? 'Metrics reported by the trainer. Updated every five seconds.' : training ? 'Waiting for the trainer’s first loss report. Loading models can take a few minutes.' : 'The live log below shows what the worker has reported.'}</p>
+			<p class="text-xs uppercase tracking-[0.2em] text-zinc-500">{training ? 'Training signal' : generatingDataset ? 'Dataset generation' : 'Run activity'}</p>
+			<h2 class="mt-3 text-2xl font-medium tracking-tight text-zinc-100">{job.status === 'queued' ? 'Your turn is coming.' : progress.latest ? 'Learning, one step at a time.' : generatingDataset ? 'The teacher is creating examples.' : 'The Studio is at work.'}</h2>
+			<p class="mt-2 text-sm leading-6 text-zinc-400">{job.status === 'queued' ? `Waiting for the shared Mac Studio${job.queuePosition ? ` · position ${job.queuePosition}` : ''}.` : progress.latest ? 'Metrics reported by the trainer. Updated every five seconds.' : training ? 'Waiting for the trainer’s first loss report. Loading models can take a few minutes.' : generatingDataset ? 'The teacher is generating questions and answers. No model weights are being changed.' : 'The live log below shows what the worker has reported.'}</p>
 			{#if training}
 				<div class="mt-6 grid grid-cols-2 gap-5">
 					<div><p class="text-xs text-zinc-500">Reported step</p><p class="mt-1 font-mono text-xl text-zinc-100">{progress.latest?.step.toLocaleString() ?? '—'}<span class="text-sm text-zinc-500"> / {progress.total > 0 ? progress.total.toLocaleString() : '—'}</span></p></div>

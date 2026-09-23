@@ -32,6 +32,10 @@ export const actions: Actions = {
 		const team = form.get('team') as Team | null;
 		const type = form.get('jobType') as JobType | null;
 		const file = form.get('file') as File | null;
+		const generationPromptValue = type === 'teacher-gen' ? form.get('generationPrompt') : null;
+		const generationPrompt = typeof generationPromptValue === 'string' ? generationPromptValue.trim() : '';
+		const questionCountValue = type === 'teacher-gen' ? form.get('questionCount') : null;
+		const questionCount = typeof questionCountValue === 'string' ? Number(questionCountValue) : NaN;
 
 		if (!team || !TEAMS.includes(team)) {
 			return fail(400, { error: 'Please select a valid team.' });
@@ -40,10 +44,16 @@ export const actions: Actions = {
 			return fail(400, { error: 'Please select a valid job type.' });
 		}
 		const jobType = JOB_TYPES.find((candidate) => candidate.value === type)!;
-		if (jobType.requiresInput && (!file || file.size === 0)) {
+		if (generationPrompt.length > 6000) {
+			return fail(400, { error: 'Keep the generation prompt under 6,000 characters.' });
+		}
+		if (generationPrompt && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 20)) {
+			return fail(400, { error: 'Choose between 1 and 20 questions.' });
+		}
+		if (jobType.requiresInput && !generationPrompt && (!file || file.size === 0)) {
 			return fail(400, { error: `Please attach the ${jobType.inputLabel.toLowerCase()}.` });
 		}
-		if (jobType.requiresInput && file && !file.name.toLowerCase().endsWith('.jsonl')) {
+		if (jobType.requiresInput && !generationPrompt && file && !file.name.toLowerCase().endsWith('.jsonl')) {
 			return fail(400, { error: 'Please upload a file whose name ends in .jsonl.' });
 		}
 		if (file && file.size > MAX_UPLOAD_BYTES) {
@@ -80,14 +90,18 @@ export const actions: Actions = {
 
 		const jobId = nanoid(10);
 		let inputFile = '';
-		if (jobType.requiresInput && file) {
+		if (jobType.requiresInput && (file || generationPrompt)) {
 			const jobDir = path.join(JOBS_DIR, jobId);
 			await mkdir(jobDir, { recursive: true });
-
-			const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-			inputFile = path.join(jobDir, safeName);
-			const buf = Buffer.from(await file.arrayBuffer());
-			await writeFile(inputFile, buf);
+			if (generationPrompt) {
+				inputFile = path.join(jobDir, 'generation-plan.jsonl');
+				await writeFile(inputFile, JSON.stringify({ generation_prompt: generationPrompt, count: questionCount }) + '\n');
+			} else if (file) {
+				const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+				inputFile = path.join(jobDir, safeName);
+				const buf = Buffer.from(await file.arrayBuffer());
+				await writeFile(inputFile, buf);
+			}
 		}
 
 		const params: JobParams = {};

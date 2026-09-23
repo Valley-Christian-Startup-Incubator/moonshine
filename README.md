@@ -23,8 +23,13 @@ as **Unassigned**.
 Then:
 
 1. Open **Lab**. Choose **Quick tour** for highlighted controls, or an info icon for an explanation.
-2. **Generate:** start from topics or upload your own questions for teacher answers.
-   Browse samples before submitting, and download completed results from **Jobs**.
+2. **Generate:** chat about what the smaller model should learn. The assistant
+   interviews you and drafts a prompt that tells the configured teacher how to
+   generate Q&A pairs. Edit that prompt, choose a question count, and select
+   **Generate questions**. This queues a teacher inference job that creates both
+   the questions and answers; it does not train a model. You can also upload an
+   existing question file for the teacher to answer. Download and review the
+   completed dataset from **Jobs** before opening it in **Split**.
    Single-file results download as standalone files; directory results such as
    models and adapters download as `.tar.gz` archives.
 3. **Split:** upload the teacher Q&A in your browser. Choose 80/20, 85/15, or
@@ -60,6 +65,17 @@ The web submission form accepts only configured local Qwen paths, with no hub
 fallback. In **Generate**, the teacher panel shows its source status. Choose
 **Teacher answers** to set maximum answer length and answer variety. Each info
 icon explains the control and how to use it.
+
+The planning chat uses Vercel's AI SDK. By default it calls the local Ollama
+model named by `DIAGNOSTIC_MODEL` at `DIAGNOSTIC_OLLAMA_URL`. To use a GPT model
+instead, set `OPENAI_API_KEY` in the Studio environment before running
+`setup.sh`; `TOPIC_CHAT_MODEL` optionally selects the model (default:
+`gpt-6-astra`). Setup preserves these values on later runs. The key stays on
+the server and is never sent to the browser. A student can also use **Sign in
+with ChatGPT** in the planning chat to use their own account for that chat.
+This uses the third-party `openai-oauth` package and needs its Chrome or Firefox
+extension for the browser sign-in callback. The student may disconnect in the
+chat. Moonshine account sign-in remains separate from model access.
 
 To set up the teacher, an instructor opens **Configure teacher**, signs in, and
 enters the full path to the installed Qwen MLX folder on the computer running

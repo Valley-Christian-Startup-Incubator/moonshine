@@ -25,7 +25,13 @@
 		"vite": "^5.4.11"
 	},
 	"dependencies": {
+		"@ai-sdk/openai": "^3.0.115",
+		"@ai-sdk/openai-compatible": "^2.0.76",
+		"@openai-oauth/ai-sdk": "^2.0.0",
+		"@openai-oauth/web": "^2.0.0",
+		"ai": "^6.0.287",
 		"nanoid": "^5.0.9",
-		"three": "^0.186.0"
+		"three": "^0.186.0",
+		"zod": "^4.6.5"
 	}
 }

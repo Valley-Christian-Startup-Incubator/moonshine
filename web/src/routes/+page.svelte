@@ -6,10 +6,12 @@
 	import type { JobType, Team } from '$lib/types';
 	import DatasetReview from '$lib/components/DatasetReview.svelte';
 	import InfoDialog from '$lib/components/InfoDialog.svelte';
+	import TopicChat from '$lib/components/TopicChat.svelte';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let selectedTeam = $state<Team>('FRC Robotics');
-	let selectedType = $state<JobType>(untrack(() => data.initialType));
+	let selectedType = $state<JobType>(untrack(() => data.initialType === 'prompt-gen' ? 'teacher-gen' : data.initialType));
+	let planMode = $state(untrack(() => data.initialType === 'prompt-gen'));
 	let stage = $state(
 		untrack(() =>
 			['finetune', 'distill', 'quantize'].includes(data.initialType) ? 2 : 0
@@ -36,12 +38,12 @@
 		{
 			target: 'task-choice',
 			title: 'Start with what you have',
-			text: 'Have questions already? Choose Teacher answers and upload them. Otherwise, start from topics.'
+			text: 'Describe the Q&A you need. The assistant interviews you and writes a generation prompt for the teacher model.'
 		},
 		{
 			target: 'dataset',
-			title: 'Check your examples',
-			text: 'Choose a JSONL file to browse samples before submitting. Keep a copy on your computer.'
+			title: 'Send the plan to the teacher',
+			text: 'Choose how many questions to create, then run the teacher generation job. Review its Q&A before training.'
 		},
 		{
 			target: 'run-job',
@@ -76,6 +78,7 @@
 	);
 
 	function chooseType(type: JobType) {
+		planMode = false;
 		if (selectedType !== type) {
 			selectedFile = null;
 			if (fileInput) fileInput.value = '';
@@ -91,6 +94,7 @@
 	async function showTour(index: number) {
 		stage = 0;
 		if (studentJob) chooseType('teacher-gen');
+		planMode = true;
 		tour = index;
 		await tick();
 		document.getElementById(tourSteps[index].target)?.scrollIntoView({
@@ -242,8 +246,27 @@
 			>
 		</section>
 	{/if}
+	{#if stage === 0 && planMode}
+		<section class="workspace mt-6" id="dataset" class:tour-target={tour === 2}>
+			<div id="task-choice" class:tour-target={tour === 1}>
+				<div class="section-heading"><h2>Create examples</h2></div>
+				<div class="mt-5 flex flex-wrap gap-2" aria-label="Choose an action">
+					<button type="button" class="choice chosen" aria-pressed="true">Plan examples</button>
+					<button type="button" class="choice" aria-pressed="false" onclick={() => chooseType('teacher-gen')}>Teacher answers</button>
+				</div>
+			</div>
+			{@render coach(1)}
+			<TopicChat
+				teams={data.teams}
+				teacher={data.modelPresets.teacher}
+				teacherFields={data.fields['teacher-gen'].filter((field) => ['MAX_TOKENS', 'TEMPERATURE'].includes(field.name))}
+				formError={form?.error}
+			/>
+			{@render coach(2)}
+		</section>
+	{/if}
 	<form
-		hidden={stage === 1 || stage === 3}
+		hidden={stage === 1 || stage === 3 || (stage === 0 && planMode)}
 		method="POST"
 		enctype="multipart/form-data"
 		class="workspace mt-6"
@@ -266,13 +289,12 @@
 					title={stage === 0 ? 'Generating examples' : 'Training methods'}
 				>
 					{#if stage === 0}<p>
-							Start from a topic file to make questions, or upload your own
-							questions for the teacher to answer.
+							Plan a Q&A generation prompt with the assistant and send it to
+							the teacher to create a dataset, or upload questions you already wrote.
 						</p>
 						<p>
-							The current question generator uses templates. Review the samples
-							before generating teacher answers. An instructor must configure a
-							local teacher model before generating answers.
+							Dataset generation is inference, not training. Review every teacher
+							answer before splitting the dataset and training the student.
 						</p>
 					{:else}<p>
 							<strong>Train from answers</strong> teaches the student to predict the
@@ -295,7 +317,8 @@
 				</InfoDialog>
 			</div>
 			<div class="mt-5 flex flex-wrap gap-2" aria-label="Choose an action">
-				{#each stage === 0 ? [{ type: 'prompt-gen', label: 'Make questions' }, { type: 'teacher-gen', label: 'Teacher answers' }] : [{ type: 'finetune', label: 'Train from answers' }, { type: 'distill', label: 'Distill token scores' }, { type: 'quantize', label: 'Reduce model size' }] as item}
+				{#if stage === 0}<button type="button" class="choice" aria-pressed="false" onclick={() => (planMode = true)}>Plan examples</button>{/if}
+				{#each stage === 0 ? [{ type: 'teacher-gen', label: 'Teacher answers' }] : [{ type: 'finetune', label: 'Train from answers' }, { type: 'distill', label: 'Distill token scores' }, { type: 'quantize', label: 'Reduce model size' }] as item}
 					<button
 						type="button"
 						class="choice"
@@ -307,9 +330,7 @@
 				{/each}
 			</div>
 			<p class="intro">
-				{selectedType === 'prompt-gen'
-					? 'Upload topics to make questions.'
-					: selectedType === 'teacher-gen'
+				{selectedType === 'teacher-gen'
 						? 'Upload questions for the teacher to answer.'
 						: selectedType === 'quantize'
 							? 'Choose a size for your model.'
@@ -330,7 +351,8 @@
 								title="Teacher setup"
 							>
 								<p>
-									The teacher creates the answers your student learns from.
+									The teacher creates Q&A from a reviewed generation prompt, or answers
+									questions you upload. This step does not change model weights.
 									The model shown here is the source selected by your instructor.
 								</p>
 								<p>
@@ -393,11 +415,7 @@
 							</div>
 						{/each}
 					</div>
-				{:else if selectedType === 'prompt-gen'}<p
-						class="mt-3 text-xs text-zinc-500"
-					>
-						Used for teacher answers. Making questions uses templates.
-					</p>{/if}
+				{/if}
 			</section>
 		{/if}
 
@@ -442,8 +460,7 @@
 						<JsonExample code={'{"prompt":"Explain how a gear ratio changes torque."}\n{"prompt":"List three ways a school can reduce plastic waste."}'} />
 						<p>Use double quotes, with no commas between lines and no surrounding
 							square brackets. Include only questions; the teacher will add the answers.</p>
-						<p>Start with the example below and replace its questions, or upload the
-							file downloaded from <strong>Make questions</strong>.</p>
+						<p>Start with the example below and replace its questions, or use questions from <strong>Plan examples</strong>.</p>
 					{:else if selectedType === 'prompt-gen'}
 						<p>Save a plain-text <code>.jsonl</code> file with one topic per line.
 							Each JSON object has a <code>"topic"</code> string and an
