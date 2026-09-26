@@ -1,9 +1,7 @@
 import type { PageServerLoad } from './$types';
-import { listJobs } from '$lib/server/jobs';
-import { TEAMS } from '$lib/config';
-import { JOB_TYPES } from '$lib/types';
+import { getQueueSummary, listJobs } from '$lib/server/queue';
 
 export const load: PageServerLoad = async () => {
-	const jobs = await listJobs();
-	return { jobs, teams: TEAMS, jobTypes: JOB_TYPES };
+	const [jobs, queue] = await Promise.all([listJobs(), getQueueSummary()]);
+	return { jobs, queue };
 };

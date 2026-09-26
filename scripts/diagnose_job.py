@@ -222,7 +222,7 @@ def main() -> None:
 
 	prompt = JOB_CONTEXT_TEMPLATE.format(
 		job_type=meta.get("type", "unknown"),
-		team=meta.get("team", "unknown"),
+		team=meta.get("team") or meta.get("ownerName") or "unknown",
 		params=json.dumps(params),
 		log_lines=LOG_TAIL_LINES,
 		log_tail=tail,

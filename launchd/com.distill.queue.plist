@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.distill.queue</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/aimac/.distill-venv/bin/python</string>
+		<string>/Users/aimac/.distill/scripts/queue_runner.py</string>
+	</array>
+	<key>WorkingDirectory</key><string>/Users/aimac/.distill</string>
+	<key>RunAtLoad</key><true/>
+	<key>KeepAlive</key><true/>
+	<key>ExitTimeOut</key><integer>120</integer>
+	<key>StandardOutPath</key><string>/Users/aimac/.distill/logs/queue.out.log</string>
+	<key>StandardErrorPath</key><string>/Users/aimac/.distill/logs/queue.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DISTILL_HOME</key><string>/Users/aimac/.distill</string>
+		<key>PYTHONUNBUFFERED</key><string>1</string>
+		<key>PATH</key><string>/Users/aimac/.distill-venv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>DIAGNOSTIC_AGENT</key><string>ollama</string>
+		<key>DIAGNOSTIC_MODEL</key><string>qwen3.8:27b-mlx</string>
+		<key>DIAGNOSTIC_OLLAMA_URL</key><string>http://127.0.0.1:11434</string>
+	</dict>
+	<key>LimitLoadToSessionType</key><string>Background</string>
+</dict>
+</plist>

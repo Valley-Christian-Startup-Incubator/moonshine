@@ -54,3 +54,15 @@
 		@apply bg-zinc-800 text-zinc-300 ring-1 ring-inset ring-zinc-700;
 	}
 }
+
+@layer components {
+	.badge-paused {
+		@apply bg-violet-950 text-violet-300 ring-1 ring-inset ring-violet-800;
+	}
+	.tab {
+		@apply rounded-md px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200;
+	}
+	.tab-active {
+		@apply bg-bg-elevated text-zinc-100 ring-1 ring-inset ring-border;
+	}
+}

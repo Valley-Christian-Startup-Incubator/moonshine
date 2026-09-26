@@ -1,145 +1,85 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { nanoid } from 'nanoid';
-import path from 'node:path';
-import { writeFile, mkdir } from 'node:fs/promises';
 import type { Actions, PageServerLoad } from './$types';
-import { TEAMS, MAX_UPLOAD_BYTES } from '$lib/config';
-import { JOB_TYPES, JOB_TYPE_FIELDS, type JobType, type Team, type JobParams } from '$lib/types';
-import { JOBS_DIR } from '$lib/server/env';
-import { submitJob } from '$lib/server/jobs';
-import { getModelPresetConfig, getModelPresets, type StudentModelId } from '$lib/server/model-presets';
+import { getTeacherModel } from '$lib/server/ollama';
+import { isStudentId, listStudents } from '$lib/server/students';
+import {
+	DEFAULT_QUESTION_COUNT,
+	MAX_QUESTION_COUNT,
+	MAX_UPLOAD_BYTES,
+	submitGenerateJob,
+	submitTrainJob,
+	TRAIN_ADVANCED_KEYS,
+	type TrainAdvanced
+} from '$lib/server/queue';
 
-export const load: PageServerLoad = async ({ url }) => {
-	const requestedType = url.searchParams.get('jobType');
-	const initialType = JOB_TYPES.some((jobType) => jobType.value === requestedType)
-		? (requestedType as JobType)
-		: 'prompt-gen';
-	const modelPresets = await getModelPresets();
-	const fields = Object.fromEntries(
-		Object.entries(JOB_TYPE_FIELDS).map(([jobType, jobFields]) => [
-			jobType,
-			jobFields.filter((field) => field.name !== 'MODEL_PATH' && field.name !== 'TEACHER_MODEL_PATH')
-		])
-	) as typeof JOB_TYPE_FIELDS;
-	return { teams: TEAMS, jobTypes: JOB_TYPES, fields, initialType, modelPresets };
+export const load: PageServerLoad = async () => {
+	const [teacher, students] = await Promise.all([getTeacherModel(), listStudents()]);
+	return {
+		teacher,
+		students: students.map(({ id, label, params, available }) => ({ id, label, params, available })),
+		defaultCount: DEFAULT_QUESTION_COUNT,
+		maxCount: MAX_QUESTION_COUNT
+	};
 };
 
+function uploaded(form: FormData, key: string): File | null {
+	const f = form.get(key);
+	return f instanceof File && f.size > 0 ? f : null;
+}
+
 export const actions: Actions = {
-	default: async ({ request, locals }) => {
-		if (!locals.user) return fail(401, { error: 'Please sign in before submitting a job.' });
+	generate: async ({ request, locals }) => {
+		if (!locals.userName) return fail(401, { stage: 'questions', error: 'Pick your name first.' });
 		const form = await request.formData();
-
-		const team = form.get('team') as Team | null;
-		const type = form.get('jobType') as JobType | null;
-		const file = form.get('file') as File | null;
-		const generationPromptValue = type === 'teacher-gen' ? form.get('generationPrompt') : null;
-		const generationPrompt = typeof generationPromptValue === 'string' ? generationPromptValue.trim() : '';
-		const questionCountValue = type === 'teacher-gen' ? form.get('questionCount') : null;
-		const questionCount = typeof questionCountValue === 'string' ? Number(questionCountValue) : NaN;
-
-		if (!team || !TEAMS.includes(team)) {
-			return fail(400, { error: 'Please select a valid team.' });
+		const count = Number(form.get('count') || DEFAULT_QUESTION_COUNT);
+		const source = form.get('source');
+		const promptText = String(form.get('promptText') ?? '');
+		const file = uploaded(form, 'file');
+		let promptFile: { name: string; data: Uint8Array };
+		if (source === 'session') {
+			if (promptText.trim().length < 20) return fail(400, { stage: 'questions', error: 'There is no PROMPT from this session yet.' });
+			promptFile = { name: 'prompt-from-interview.md', data: new TextEncoder().encode(promptText) };
+		} else {
+			if (!file) return fail(400, { stage: 'questions', error: 'Choose your PROMPT file (.md or .txt).' });
+			promptFile = { name: file.name, data: new Uint8Array(await file.arrayBuffer()) };
 		}
-		if (!type || !(type in JOB_TYPE_FIELDS)) {
-			return fail(400, { error: 'Please select a valid job type.' });
-		}
-		const jobType = JOB_TYPES.find((candidate) => candidate.value === type)!;
-		if (generationPrompt.length > 6000) {
-			return fail(400, { error: 'Keep the generation prompt under 6,000 characters.' });
-		}
-		if (generationPrompt && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 20)) {
-			return fail(400, { error: 'Choose between 1 and 20 questions.' });
-		}
-		if (jobType.requiresInput && !generationPrompt && (!file || file.size === 0)) {
-			return fail(400, { error: `Please attach the ${jobType.inputLabel.toLowerCase()}.` });
-		}
-		if (jobType.requiresInput && !generationPrompt && file && !file.name.toLowerCase().endsWith('.jsonl')) {
-			return fail(400, { error: 'Please upload a file whose name ends in .jsonl.' });
-		}
-		if (file && file.size > MAX_UPLOAD_BYTES) {
-			return fail(400, { error: 'File exceeds the 500MB upload limit.' });
-		}
-
-		const needsStudentModel = type === 'finetune' || type === 'distill' || type === 'quantize';
-		const needsTeacherModel = type === 'teacher-gen' || type === 'distill';
-		const modelConfig = needsStudentModel || needsTeacherModel ? await getModelPresetConfig() : null;
-		const selectedStudentModel = form.get('studentModel');
-
-		if (
-			needsStudentModel &&
-			(typeof selectedStudentModel !== 'string' ||
-				(selectedStudentModel !== 'qwen-4b' && selectedStudentModel !== 'qwen-8b'))
-		) {
-			return fail(400, {
-				error: 'Configure local Qwen model paths before submitting this job.'
-			});
-		}
-		if (
-			needsStudentModel &&
-			modelConfig?.paths.students[selectedStudentModel as StudentModelId] === undefined
-		) {
-			return fail(400, {
-				error: 'Configure local Qwen model paths before submitting this job.'
-			});
-		}
-		if (needsTeacherModel && modelConfig?.paths.teacher === undefined) {
-			return fail(400, {
-				error: 'Configure local Qwen model paths before submitting this job.'
-			});
-		}
-
-		const jobId = nanoid(10);
-		let inputFile = '';
-		if (jobType.requiresInput && (file || generationPrompt)) {
-			const jobDir = path.join(JOBS_DIR, jobId);
-			await mkdir(jobDir, { recursive: true });
-			if (generationPrompt) {
-				inputFile = path.join(jobDir, 'generation-plan.jsonl');
-				await writeFile(inputFile, JSON.stringify({ generation_prompt: generationPrompt, count: questionCount }) + '\n');
-			} else if (file) {
-				const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-				inputFile = path.join(jobDir, safeName);
-				const buf = Buffer.from(await file.arrayBuffer());
-				await writeFile(inputFile, buf);
-			}
-		}
-
-		const params: JobParams = {};
-		for (const field of JOB_TYPE_FIELDS[type]) {
-			const raw = form.get(field.name);
-			if (raw === null || raw === '') {
-				params[field.name] = field.default;
-			} else {
-				params[field.name] = field.type === 'number' ? Number(raw) : String(raw);
-			}
-		}
-
-		if (needsStudentModel) {
-			params.MODEL_PATH = modelConfig!.paths.students[selectedStudentModel as StudentModelId]!;
-		}
-		if (type === 'teacher-gen') {
-			params.MODEL_PATH = modelConfig!.paths.teacher!;
-		}
-		if (type === 'distill') {
-			params.TEACHER_MODEL_PATH = modelConfig!.paths.teacher!;
-		}
-
+		let id: string;
 		try {
-			await submitJob({
-				id: jobId,
-				ownerId: locals.user.id,
-				team,
-				type,
-				params,
-				inputFile,
-				submittedAt: new Date().toISOString()
-			});
-		} catch (err) {
-			return fail(502, {
-				error: `Failed to enqueue job with Dagu: ${err instanceof Error ? err.message : String(err)}`
-			});
+			id = await submitGenerateJob({ ownerName: locals.userName, promptFile, count });
+		} catch (e) {
+			return fail(400, { stage: 'questions', error: e instanceof Error ? e.message : String(e) });
 		}
+		redirect(303, `/jobs/${id}?submitted=1`);
+	},
 
-		redirect(303, `/jobs/${jobId}?submitted=1`);
+	train: async ({ request, locals }) => {
+		if (!locals.userName) return fail(401, { stage: 'train', error: 'Pick your name first.' });
+		const form = await request.formData();
+		const student = form.get('student');
+		const file = uploaded(form, 'file');
+		if (!isStudentId(student)) return fail(400, { stage: 'train', error: 'Choose a student model.' });
+		if (!file) return fail(400, { stage: 'train', error: 'Choose your questions file (.jsonl).' });
+		if (file.size > MAX_UPLOAD_BYTES) return fail(400, { stage: 'train', error: 'The file is larger than 500 MB.' });
+		const advanced: TrainAdvanced = {};
+		for (const key of TRAIN_ADVANCED_KEYS) {
+			const raw = form.get(key);
+			if (typeof raw === 'string' && raw.trim() !== '') {
+				const n = Number(raw);
+				if (!Number.isFinite(n) || n <= 0) return fail(400, { stage: 'train', error: `${key} must be a positive number.` });
+				advanced[key] = n;
+			}
+		}
+		let id: string;
+		try {
+			id = await submitTrainJob({
+				ownerName: locals.userName,
+				student,
+				dataFile: { name: file.name, data: new Uint8Array(await file.arrayBuffer()) },
+				advanced
+			});
+		} catch (e) {
+			return fail(400, { stage: 'train', error: e instanceof Error ? e.message : String(e) });
+		}
+		redirect(303, `/jobs/${id}?submitted=1`);
 	}
 };

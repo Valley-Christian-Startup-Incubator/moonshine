@@ -8,43 +8,48 @@
 
 	const navItems = [
 		{ href: '/', label: 'Lab' },
-		{ href: '/jobs', label: 'Jobs' },
-		{ href: '/admin', label: 'Admin' }
+		{ href: '/jobs', label: 'Jobs' }
 	];
+	const active = (href: string) =>
+		href === '/' ? $page.url.pathname === '/' : $page.url.pathname.startsWith(href);
 </script>
 
 <div class="min-h-screen bg-bg">
 	<header class="border-b border-border-subtle bg-bg-subtle">
-		<div
-			class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6"
-		>
+		<div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
 			<a href="/" class="flex items-center gap-2 font-semibold text-zinc-100">
 				<span class="font-mono text-sm text-zinc-500">◆</span>
 				Moonshine
 			</a>
-			<nav class="flex gap-1">
-				{#each navItems as item (item.href)}
-					<a
-						href={item.href}
-						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors
-							{$page.url.pathname === item.href
-							? 'bg-bg-elevated text-zinc-100'
-							: 'text-zinc-400 hover:text-zinc-200'}"
-					>
-						{item.label}
-					</a>
-				{/each}
-				{#if data.user}
-				<form method="POST" action="/logout">
-					<button
-						type="submit"
-						class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200"
-					>
-						Sign out
-					</button>
-				</form>
-				{/if}
-			</nav>
+			{#if data.user}
+				<nav class="flex flex-wrap items-center gap-1">
+					{#if data.userName}
+						{#each navItems as item (item.href)}
+							<a
+								href={item.href}
+								class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors
+									{active(item.href) ? 'bg-bg-elevated text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'}"
+							>
+								{item.label}
+							</a>
+						{/each}
+						<span class="ml-2 hidden h-5 w-px bg-border sm:inline-block"></span>
+						<span class="ml-2 text-sm text-zinc-300" title="Signed in as">👤 {data.userName}</span>
+						<a
+							href="/welcome?next={encodeURIComponent($page.url.pathname)}"
+							class="rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-200">Switch</a
+						>
+					{/if}
+					<form method="POST" action="/logout">
+						<button
+							type="submit"
+							class="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200"
+						>
+							Sign out
+						</button>
+					</form>
+				</nav>
+			{/if}
 		</div>
 	</header>
 

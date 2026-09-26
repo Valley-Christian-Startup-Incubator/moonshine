@@ -4,12 +4,8 @@ import { createReadStream } from 'node:fs';
 import { PassThrough, Readable } from 'node:stream';
 import path from 'node:path';
 import type { RequestHandler } from './$types';
-import { getJob } from '$lib/server/jobs';
-import {
-	ResultPathMissingError,
-	UnsafeResultPathError,
-	validateResultPath
-} from '$lib/server/downloads';
+import { getJob, listJobArtifacts } from '$lib/server/queue';
+import { ResultPathMissingError, UnsafeResultPathError, validateResultPath } from '$lib/server/downloads';
 
 function safeFilename(value: string): string {
 	const cleaned = value.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+$/, '_');
@@ -17,73 +13,58 @@ function safeFilename(value: string): string {
 }
 
 function tarStream(jobDir: string, relativePath: string): ReadableStream<Uint8Array> {
-	const child = spawn('tar', ['-czf', '-', '--', relativePath], {
-		cwd: jobDir,
-		shell: false,
-		stdio: ['ignore', 'pipe', 'pipe']
-	});
+	const child = spawn('tar', ['-czf', '-', '--', relativePath], { cwd: jobDir, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
 	const output = new PassThrough();
-	let childExited = false;
-	let terminating = false;
-
+	let exited = false;
 	const terminate = () => {
-		if (childExited || terminating) return;
-		terminating = true;
+		if (exited) return;
 		child.kill('SIGTERM');
-		setTimeout(() => {
-			if (!childExited) child.kill('SIGKILL');
-		}, 1000).unref();
+		setTimeout(() => !exited && child.kill('SIGKILL'), 1000).unref();
 	};
-
 	child.stderr.resume();
 	child.stdout.pipe(output, { end: false });
-	child.stdout.on('error', (cause) => output.destroy(cause));
-	child.on('error', (cause) => output.destroy(cause));
+	child.stdout.on('error', (c) => output.destroy(c));
+	child.on('error', (c) => output.destroy(c));
 	child.on('close', (code, signal) => {
-		childExited = true;
-		if (code === 0) {
-			output.end();
-			return;
-		}
-		output.destroy(
-			new Error(`Result archive process failed${signal ? ` (${signal})` : ` (exit ${code ?? 'unknown'})`}.`)
-		);
+		exited = true;
+		if (code === 0) output.end();
+		else output.destroy(new Error(`Archive failed${signal ? ` (${signal})` : ` (exit ${code ?? '?'})`}.`));
 	});
 	output.on('close', terminate);
 	output.on('error', terminate);
-
 	return Readable.toWeb(output) as ReadableStream<Uint8Array>;
 }
 
-export const GET: RequestHandler = async ({ params }) => {
+/** GET /jobs/:id/download?file=<artifact key> (questions, report-md, report-json, adapters, fused, log). */
+export const GET: RequestHandler = async ({ params, url }) => {
 	const job = await getJob(params.id);
 	if (!job) error(404, 'Job not found');
-	if (job.status !== 'complete') error(400, 'Job has not completed yet');
+	const key = url.searchParams.get('file') ?? (job.type === 'generate' ? 'questions' : 'report-md');
+	const artifact = (await listJobArtifacts(job.id)).find((a) => a.key === key);
+	if (!artifact) error(404, 'That result is not available yet');
 
 	let result;
 	try {
-		result = await validateResultPath(job.id, job.outputPath);
+		result = await validateResultPath(job.id, artifact.relPath);
 	} catch (cause) {
 		if (cause instanceof UnsafeResultPathError) error(400, 'Invalid result path');
-		if (cause instanceof ResultPathMissingError) error(404, 'Result file not found on disk');
-		error(404, 'Result file not found on disk');
+		if (cause instanceof ResultPathMissingError) error(404, 'Result not found on disk');
+		error(404, 'Result not found on disk');
 	}
-
+	const owner = safeFilename(job.ownerName.toLowerCase());
 	if (result.stats.isDirectory()) {
-		const relativePath = path.relative(result.jobDir, result.path) || '.';
-		return new Response(tarStream(result.jobDir, relativePath), {
+		const rel = path.relative(result.jobDir, result.path) || '.';
+		return new Response(tarStream(result.jobDir, rel), {
 			headers: {
 				'Content-Type': 'application/gzip',
-				'Content-Disposition': `attachment; filename="${safeFilename(job.id)}.tar.gz"`
+				'Content-Disposition': `attachment; filename="${owner}-${safeFilename(job.id)}-${safeFilename(artifact.key)}.tar.gz"`
 			}
 		});
 	}
-
-	const nodeStream = createReadStream(result.path);
-	return new Response(Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>, {
+	return new Response(Readable.toWeb(createReadStream(result.path)) as ReadableStream<Uint8Array>, {
 		headers: {
-			'Content-Type': 'application/octet-stream',
-			'Content-Disposition': `attachment; filename="${safeFilename(job.id)}-${safeFilename(path.basename(result.path))}"`,
+			'Content-Type': result.path.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'application/octet-stream',
+			'Content-Disposition': `attachment; filename="${owner}-${safeFilename(job.id)}-${safeFilename(path.basename(result.path))}"`,
 			'Content-Length': String(result.stats.size)
 		}
 	});

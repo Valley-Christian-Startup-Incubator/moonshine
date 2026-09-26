@@ -1,106 +1,96 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/stores';
+	import JobControls from '$lib/components/JobControls.svelte';
+	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import { formatTimestamp, statusBadgeClass } from '$lib/format';
+	import { JOB_TYPE_LABELS, STATUS_LABELS, type JobStatus } from '$lib/types';
 	import type { PageData } from './$types';
-	import { statusBadgeClass, formatDuration, formatTimestamp } from '$lib/format';
-	import type { JobStatus } from '$lib/types';
 
 	let { data }: { data: PageData } = $props();
+	let mineOnly = $state(false);
+	let statusFilter = $state('all');
 
-	let modelsOnly = $state(false);
-	let teamFilter = $state<string>('all');
-	let statusFilter = $state<string>('all');
-
-	const statuses: JobStatus[] = ['queued', 'running', 'complete', 'failed'];
-
-	const filteredJobs = $derived(
-		data.jobs.filter((job) => {
-			if (modelsOnly && !['finetune', 'distill', 'quantize'].includes(job.type)) return false;
-			if (teamFilter !== 'all' && job.team !== teamFilter) return false;
-			if (statusFilter !== 'all' && job.status !== statusFilter) return false;
-			return true;
-		})
+	const jobs = $derived(
+		data.jobs.filter(
+			(j) =>
+				(!mineOnly || j.ownerName === $page.data.userName) && (statusFilter === 'all' || j.status === statusFilter)
+		)
 	);
-
-	function jobTypeLabel(value: string): string {
-		return data.jobTypes.find((jobType) => jobType.value === value)?.label ?? value;
-	}
+	const pausedJob = $derived(data.jobs.find((j) => j.id === data.queue.pausedJobId));
+	const active = $derived(data.jobs.some((j) => j.status === 'running' || j.status === 'queued' || j.pendingAction));
 
 	$effect(() => {
-		const interval = setInterval(() => {
-			invalidateAll();
-		}, 10_000);
-		return () => clearInterval(interval);
+		const t = setInterval(() => invalidateAll(), active ? 4000 : 20000);
+		return () => clearInterval(t);
 	});
 </script>
 
-<svelte:head>
-	<title>Jobs — Distill Scheduler</title>
-</svelte:head>
+<svelte:head><title>Jobs — Moonshine</title></svelte:head>
 
 <div class="flex flex-wrap items-center justify-between gap-3">
-	<h1 class="text-xl font-semibold text-zinc-100">Jobs</h1>
-	<div class="flex flex-wrap gap-2">
-		<select aria-label="Team" bind:value={teamFilter} class="input w-auto text-sm">
-			<option value="all">All teams</option>
-			{#each data.teams as team (team)}
-				<option value={team}>{team}</option>
-			{/each}
-		</select>
+	<h1 class="text-2xl font-semibold text-zinc-100">Jobs</h1>
+	<div class="flex flex-wrap items-center gap-3">
+		<label class="flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" bind:checked={mineOnly} /> Only mine</label>
 		<select aria-label="Status" bind:value={statusFilter} class="input w-auto text-sm">
 			<option value="all">All statuses</option>
-			{#each statuses as s (s)}
-				<option value={s}>{s}</option>
+			{#each Object.entries(STATUS_LABELS) as [value, label] (value)}
+				<option {value}>{label}</option>
 			{/each}
 		</select>
 	</div>
 </div>
 
-<label class="mt-4 flex items-center gap-2 text-sm text-zinc-400"><input type="checkbox" bind:checked={modelsOnly} /> Models and adapters only</label>
+<p class="mt-2 text-sm text-zinc-400">One job runs at a time, in the order submitted. You can close this page; jobs keep running.</p>
 
-<div class="mt-4 rounded-lg border border-blue-900 bg-blue-950/40 px-4 py-3 text-sm text-blue-100">
-	<div class="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-4">
-		<div><span class="font-medium">Queued</span><span class="block text-xs text-blue-200/70">Waiting in line</span></div>
-		<div><span class="font-medium">Running</span><span class="block text-xs text-blue-200/70">Being processed</span></div>
-		<div><span class="font-medium">Complete</span><span class="block text-xs text-blue-200/70">Ready to download</span></div>
-		<div><span class="font-medium">Failed</span><span class="block text-xs text-blue-200/70">Needs review</span></div>
+{#if !data.queue.runnerAlive}
+	<div class="mt-4 rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+		The job runner on the Mac Studio is not responding, so queued jobs will not start. Ask an instructor to check it.
 	</div>
-	<p class="mt-3 border-t border-blue-900/70 pt-3 text-blue-200/80">
-		You can close this page while a job waits or runs. Select a row for its place in line, result,
-		or failure explanation.
-	</p>
-</div>
+{/if}
+
+{#if pausedJob}
+	<div class="mt-4 rounded-lg border border-violet-800 bg-violet-950/40 px-4 py-3 text-sm text-violet-100">
+		<strong>The queue is on hold.</strong> <a class="underline" href="/jobs/{pausedJob.id}">{JOB_TYPE_LABELS[pausedJob.type]}</a>
+		by {pausedJob.ownerName} is paused. No other job will start until it is resumed or cancelled.
+		{#if data.queue.queuedJobIds.length}({data.queue.queuedJobIds.length} waiting){/if}
+	</div>
+{/if}
 
 <div class="card mt-4 overflow-x-auto">
 	<table class="w-full text-sm">
 		<thead>
 			<tr class="border-b border-border-subtle text-left text-xs uppercase tracking-wide text-zinc-500">
-				<th class="px-4 py-3 font-medium">Job ID</th>
-				<th class="px-4 py-3 font-medium">Team</th>
 				<th class="px-4 py-3 font-medium">Type</th>
+				<th class="px-4 py-3 font-medium">Owner</th>
 				<th class="px-4 py-3 font-medium">Status</th>
+				<th class="px-4 py-3 font-medium">Progress</th>
 				<th class="px-4 py-3 font-medium">Submitted</th>
-				<th class="px-4 py-3 font-medium">Duration</th>
+				<th class="px-4 py-3 font-medium"></th>
 			</tr>
 		</thead>
 		<tbody>
-			{#each filteredJobs as job (job.id)}
-				<tr
-					class="cursor-pointer border-b border-border-subtle last:border-0 hover:bg-bg-subtle"
-					onclick={() => (window.location.href = `/jobs/${job.id}`)}
-				>
-					<td class="px-4 py-3 font-mono text-xs text-zinc-300"><a class="underline decoration-zinc-700 underline-offset-4 hover:text-white" href="/jobs/{job.id}">{job.id}</a></td>
-					<td class="px-4 py-3 text-zinc-300">{job.team}</td>
-					<td class="px-4 py-3 text-zinc-400">{jobTypeLabel(job.type)}</td>
-					<td class="px-4 py-3"><span class={statusBadgeClass(job.status)}>{job.status}</span></td>
-					<td class="px-4 py-3 text-zinc-400">{formatTimestamp(job.submittedAt)}</td>
-					<td class="px-4 py-3 font-mono text-xs text-zinc-400"
-						>{formatDuration(job.startedAt, job.completedAt)}</td
-					>
+			{#each jobs as job (job.id)}
+				<tr class="border-b border-border-subtle last:border-0 hover:bg-bg-subtle/50">
+					<td class="px-4 py-3">
+						<a href="/jobs/{job.id}" class="font-medium text-zinc-100 hover:underline">{JOB_TYPE_LABELS[job.type]}</a>
+						<p class="font-mono text-xs text-zinc-500">
+							{job.id}{#if job.type === 'train'} · {job.params.STUDENT}{/if}{#if job.type === 'generate'} · {job.params.COUNT} questions{/if}
+						</p>
+					</td>
+					<td class="px-4 py-3 text-zinc-300">{job.ownerName}</td>
+					<td class="px-4 py-3">
+						<span class={statusBadgeClass(job.status)}>{STATUS_LABELS[job.status as JobStatus]}</span>
+						{#if job.status === 'queued' && job.queuePosition}
+							<p class="mt-1 text-xs text-zinc-500">#{job.queuePosition} in line</p>
+						{/if}
+					</td>
+					<td class="px-4 py-3"><ProgressBar progress={job.progress} status={job.status} /></td>
+					<td class="px-4 py-3 text-xs text-zinc-500">{formatTimestamp(job.submittedAt)}</td>
+					<td class="px-4 py-3"><JobControls id={job.id} status={job.status} pending={job.pendingAction} compact /></td>
 				</tr>
 			{:else}
-				<tr>
-					<td colspan="6" class="px-4 py-10 text-center text-zinc-500">No jobs match these filters.</td>
-				</tr>
+				<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-zinc-500">No jobs yet. Start one in the <a href="/" class="underline">Lab</a>.</td></tr>
 			{/each}
 		</tbody>
 	</table>

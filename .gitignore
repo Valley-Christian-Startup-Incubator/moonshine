@@ -29,3 +29,25 @@ venv/
 # Downloaded/installed at setup time — never commit these
 /dagu-bin/
 *.tar.gz
+
+# Build output / dependencies (also covered in web/.gitignore)
+node_modules/
+build/
+.svelte-kit/
+
+# Runtime env files (secrets live in ~/.distill/env and the launchd plists, never here)
+env
+*.env
+secrets*
+
+# Model weights, training outputs and job data (these live under ~/.distill)
+results/
+models/
+adapters/
+fused-model/
+*.safetensors
+*.gguf
+*.npz
+*.bin
+*.tgz
+/.distill/
