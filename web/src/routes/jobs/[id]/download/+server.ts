@@ -35,7 +35,7 @@ function tarStream(jobDir: string, relativePath: string): ReadableStream<Uint8Ar
 	return Readable.toWeb(output) as ReadableStream<Uint8Array>;
 }
 
-/** GET /jobs/:id/download?file=<artifact key> (questions, report-md, report-json, adapters, fused, log). */
+/** GET /jobs/:id/download?file=<artifact key> (questions, report-md, report-json, adapters, fused, ollama-gguf, log). */
 export const GET: RequestHandler = async ({ params, url }) => {
 	const job = await getJob(params.id);
 	if (!job) error(404, 'Job not found');
@@ -63,7 +63,11 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	}
 	return new Response(Readable.toWeb(createReadStream(result.path)) as ReadableStream<Uint8Array>, {
 		headers: {
-			'Content-Type': result.path.endsWith('.md') ? 'text/markdown; charset=utf-8' : 'application/octet-stream',
+			'Content-Type': result.path.endsWith('.md')
+				? 'text/markdown; charset=utf-8'
+				: result.path.endsWith('.zip')
+					? 'application/zip'
+					: 'application/octet-stream',
 			'Content-Disposition': `attachment; filename="${owner}-${safeFilename(job.id)}-${safeFilename(path.basename(result.path))}"`,
 			'Content-Length': String(result.stats.size)
 		}

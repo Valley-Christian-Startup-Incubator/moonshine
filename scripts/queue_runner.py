@@ -17,6 +17,11 @@ Rules:
 - PURGE = cancel + delete the job's files and the Ollama models it registered
   (used when an admin deletes a user).
 This runner is the ONLY writer of status.json for v2 jobs.
+
+GGUF exports ("Build Ollama download" on a finished train job): the web app
+drops queue/gguf-requests/<id>.json; the runner starts scripts/export_gguf.py
+in the background (one export at a time, independent of the job queue). The
+export reports progress in results/<id>/gguf_status.json.
 """
 from __future__ import annotations
 
@@ -39,6 +44,7 @@ POLL = 1.5
 STOP_GRACE_SEC = 90
 TERMINAL = {"completed", "failed", "cancelled"}
 JOB_SCRIPTS = {"generate": "gen_questions.py", "train": "train_eval.py"}
+GGUF_REQ_DIR = os.path.join(mc.QUEUE_DIR, "gguf-requests")
 
 
 def status_path(job_id):
@@ -122,6 +128,8 @@ class Runner:
         self.stop_reason: str | None = None  # 'pause' | 'cancel' | 'purge'
         self.stop_sent_at = 0.0
         os.makedirs(mc.CONTROL_DIR, exist_ok=True)
+        os.makedirs(GGUF_REQ_DIR, exist_ok=True)
+        self.gguf_proc: subprocess.Popen | None = None
 
     # ---------------------------------------------------------- process control
     def start(self, jid, meta):
@@ -274,6 +282,43 @@ class Runner:
                     if action == "purge":
                         self.purge_files(jid)
 
+    # ---------------------------------------------------------- GGUF export requests
+    def handle_gguf_requests(self):
+        if self.gguf_proc and self.gguf_proc.poll() is None:
+            return  # one export at a time; later requests wait in the folder
+        self.gguf_proc = None
+        try:
+            files = sorted(f for f in os.listdir(GGUF_REQ_DIR) if f.endswith(".json"))
+        except OSError:
+            return
+        for fn in files:
+            jid = fn[:-5]
+            try:
+                os.remove(os.path.join(GGUF_REQ_DIR, fn))
+            except OSError:
+                pass
+            meta = mc.read_json(os.path.join(mc.JOBS_DIR, jid, "meta.json"), {}) or {}
+            rd = os.path.join(mc.RESULTS_DIR, jid)
+            if meta.get("type") != "train" or read_status(jid).get("status") != "completed":
+                mc.log(f"GGUF request for {jid} ignored (not a completed train job)")
+                if os.path.isdir(rd):
+                    mc.write_json_atomic(os.path.join(rd, "gguf_status.json"),
+                                         {"state": "failed", "message": "Build failed", "pid": None,
+                                          "error": "Only finished train jobs can be exported.",
+                                          "updated_at": mc.now_iso()})
+                continue
+            log = open(os.path.join(rd, "gguf_log.txt"), "a")
+            log.write(f"\n===== {mc.now_iso()} GGUF export requested from the web page =====\n")
+            log.flush()
+            env = {**os.environ, "DISTILL_HOME": mc.DISTILL_HOME, "PYTHONUNBUFFERED": "1",
+                   "PATH": f"{os.path.dirname(PY)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}
+            self.gguf_proc = subprocess.Popen([PY, os.path.join(SCRIPTS, "export_gguf.py"), jid, "--force"],
+                                              stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                              cwd=rd, env=env, start_new_session=True)
+            log.close()
+            mc.log(f"Started GGUF export for {jid} (pid {self.gguf_proc.pid})")
+            return
+
     # ---------------------------------------------------------- recovery / scheduling
     def recover(self):
         """On runner start: jobs marked running without a live runner child."""
@@ -341,6 +386,7 @@ class Runner:
         while True:
             try:
                 self.handle_controls()
+                self.handle_gguf_requests()
                 self.reap()
                 self.schedule()
                 with open(os.path.join(mc.QUEUE_DIR, "runner-heartbeat"), "w") as f:

@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
-"""Train job: split -> LoRA train -> evaluate -> fuse -> register in Ollama.
+"""Train job: split -> LoRA train -> evaluate -> fuse -> register in Ollama -> GGUF download -> Teacher advice.
 
 Every phase is resumable. State lives in results/<id>/state.json; per-item
 evaluation results are appended to jsonl files so a pause/crash never loses
 more than one item (or, for training, more than SAVE_EVERY steps).
 
+Training defaults: 2 passes over the data, or 1 pass when there are more than
+BIG_SET training items (EPOCHS / ITERS overrides always win). Best checkpoint:
+adapters are saved every SAVE_EVERY steps (auto: about 10 saves per run) and the
+validation loss is measured at every save on a fixed held-out subset
+(data_lora/valid.jsonl, up to 25 batches, the same items every time). mlx_lm
+measures "Iter N: Val loss" just BEFORE update N but saves checkpoint N just
+AFTER it, so those numbers only shortlist candidates: after training the 3 best
+candidates plus the final checkpoint are re-scored exactly (mlx_lm.lora --test
+on the same subset), and the checkpoint with the lowest exact loss becomes
+adapters/adapters.safetensors (the final weights are kept as
+adapters/final_adapters.safetensors), so evaluation, fuse, Ollama and the GGUF
+download all use it. The choice is logged and stored in state.json
+"best_checkpoint" and eval_report.json.
+
 Usage: train_eval.py --job-id ID
+       train_eval.py --advice-only ID   (re-run only the Teacher analysis of missed questions)
 """
 from __future__ import annotations
 
@@ -25,9 +40,14 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import moonshine_common as mc  # noqa: E402
 
+try:  # grounded grading is optional: never let it break training
+    import doc_sources as ds  # noqa: E402
+except Exception:  # noqa: BLE001
+    ds = None
+
 VENV_BIN = os.path.dirname(sys.executable)
 PHASES = ["split", "train", "loss", "answer_base", "answer_trained", "grade_base", "grade_trained",
-          "report", "fuse", "register"]
+          "report", "fuse", "register", "gguf", "advice"]
 PHASE_LABELS = {
     "split": "Splitting data 80/20", "train": "Training", "loss": "Measuring validation loss",
     "answer_base": "Untrained student answering held-out questions",
@@ -35,7 +55,24 @@ PHASE_LABELS = {
     "grade_base": "Teacher grading untrained answers", "grade_trained": "Teacher grading trained answers",
     "report": "Writing evaluation report", "fuse": "Fusing adapters into a 4-bit model",
     "register": "Registering the model in Ollama",
+    "gguf": "Building the Ollama download (GGUF)",
+    "advice": "Teacher analyzing missed questions",
 }
+
+ADVICE_MAX_ITEMS = 40
+BIG_SET = 1000          # more training items than this: default 1 epoch instead of 2
+VAL_MAX_BATCHES = 25    # size of the fixed validation subset used during training (batches)
+ADVICE_SYSTEM = """You are an expert machine-learning coach helping a high-school student improve a small language model (the Student) that was fine-tuned on question/answer pairs written by a larger Teacher model. You are shown the evaluation summary and a sample of held-out questions the TRAINED Student got wrong, with the answer key (expected answer), the Student's answer and the grader's note.
+
+Write a short, concrete analysis in Markdown with exactly these two sections:
+
+## Patterns in the misses
+2 to 4 bullets. Each names one pattern (a topic, a question type, a format or final-answer mistake, or answer-key items that look wrong or ambiguous) and cites 1-3 example item numbers like (#12, #31). Say how many of the sampled misses it roughly covers.
+
+## Next steps to raise the score
+3 to 5 numbered, specific actions (for example: which topics to generate more questions on and roughly how many, how to change the question-generation prompt, which answer-key items to fix or drop, training settings to change, uploading source documents). Tie each to a pattern or to the summary numbers.
+
+Rules: be specific to THIS data; no generic filler; under 350 words total; plain Markdown (headings, bullets, **bold**), no tables, no code blocks. If an answer key looks wrong, say so plainly."""
 
 GRADER_SYSTEM = """You are a strict, fair grader of practice-question answers. You compare a STUDENT ANSWER with a REFERENCE ANSWER written by an expert.
 
@@ -49,6 +86,10 @@ Rubric:
   1 = missing, irrelevant, incoherent, or contradicts itself
 - "explanation": one short sentence justifying the grade.
 Judge only against the reference answer and sound domain knowledge. Ignore style and length. Output only the JSON object."""
+
+GROUNDED_GRADER_ADDENDUM = """
+
+This question was written from an official SOURCE PASSAGE, which is included below the question. Grade against the SOURCE PASSAGE: the student's final answer is correct only if it agrees with what the source says (exact numbers, limits, rule numbers and conditions matter). If the reference answer and the source disagree, trust the source. Do not reward facts that contradict the source, and do not penalize correct facts from the source that the reference left out."""
 
 GRADE_SCHEMA = {
     "type": "object",
@@ -141,8 +182,10 @@ class Job:
                 est += n_valid * r.get("grade_base", r.get("grade_trained", 3.0))
             elif p == "loss":
                 est += 60
-            elif p in ("fuse", "register"):
+            elif p in ("fuse", "register", "gguf"):
                 est += 120
+            elif p == "advice":
+                est += 90
         return int(est)
 
     def update(self, done, **extra):
@@ -207,19 +250,40 @@ class Job:
         n_train, n_valid = self.state["n_train"], self.state["n_valid"]
         bs = int(self.param("BATCH_SIZE", 4, int))
         bs = max(1, min(bs, n_train, n_valid))
-        epochs = self.param("EPOCHS", 2.0)
+        epochs_default = 1.0 if n_train > BIG_SET else 2.0
+        epochs = self.param("EPOCHS", epochs_default)
         auto_iters = int(min(3000, max(20, math.ceil(epochs * n_train / bs))))
         iters = int(self.param("ITERS", auto_iters, int))
+        save_every = int(self.param("SAVE_EVERY", max(5, min(100, math.ceil(iters / 10))), int))
+        save_every = max(1, min(save_every, iters))
         cfg = {
             "batch_size": bs, "iters": iters, "auto_iters": auto_iters, "epochs": epochs,
+            "epochs_default": epochs_default, "epochs_user": self.p.get("EPOCHS") not in (None, "", 0, "0", "auto"),
+            "iters_user": self.p.get("ITERS") not in (None, "", 0, "0", "auto"),
             "learning_rate": self.param("LEARNING_RATE", 1e-4),
             "num_layers": int(self.param("NUM_LAYERS", 16, int)),
             "max_seq_length": int(self.param("MAX_SEQ_LENGTH", 2048, int)),
-            "save_every": int(self.param("SAVE_EVERY", 100, int)),
+            "save_every": save_every,
+            # validation loss at every save, on the same fixed subset each time -> comparable across checkpoints
+            "steps_per_eval": save_every,
+            "val_items": max(bs, min(n_valid, VAL_MAX_BATCHES * bs) // bs * bs),
+            "val_batches": -1,
+            "select_best": True,
         }
-        cfg["steps_per_eval"] = max(10, iters // 4)
-        cfg["val_batches"] = min(25, max(1, n_valid // bs))
         return cfg
+
+    def lora_data_dir(self, cfg):
+        """mlx_lm --data folder: all training items + a fixed validation subset (same items at every eval)."""
+        if not cfg.get("select_best"):
+            return self.data_dir
+        d = os.path.join(self.rd, "data_lora")
+        os.makedirs(d, exist_ok=True)
+        shutil.copy(os.path.join(self.data_dir, "train.jsonl"), os.path.join(d, "train.jsonl"))
+        with open(os.path.join(self.data_dir, "valid.jsonl"), encoding="utf-8") as f:
+            rows = [line for line in f if line.strip()][:cfg["val_items"]]
+        with open(os.path.join(d, "valid.jsonl"), "w", encoding="utf-8") as f:
+            f.writelines(rows)
+        return d
 
     def _normalize_checkpoints(self):
         """Move mlx_lm's per-segment numbered checkpoints to absolute step numbers."""
@@ -229,8 +293,116 @@ class Job:
                 n = int(os.path.basename(f).split("_")[0])
                 shutil.move(f, os.path.join(self.ckpt_dir, f"{off + n:07d}_adapters.safetensors"))
             ckpts = sorted(glob.glob(os.path.join(self.ckpt_dir, "*_adapters.safetensors")))
-            for f in ckpts[:-3]:  # keep the 3 most recent checkpoints
-                os.remove(f)
+            keep = set(ckpts[-3:])  # the 3 most recent checkpoints (resume) ...
+            for _, step in self._ranked_steps(ckpts)[:3]:  # ... plus the 3 best-scoring candidates so far
+                keep.add(os.path.join(self.ckpt_dir, f"{step:07d}_adapters.safetensors"))
+            for f in ckpts:
+                if f not in keep:
+                    os.remove(f)
+
+    def _val_by_step(self):
+        return {int(st): float(v) for st, v in (self.state.get("val_losses") or []) if st and int(st) > 1}
+
+    def _ranked_steps(self, ckpt_paths):
+        """[(approx val_loss, step)] of saved checkpoints, best first. Approximate: mlx_lm reports
+        "Iter N: Val loss" just before update N, while checkpoint N is saved just after it."""
+        if not (self.state.get("train_cfg") or {}).get("select_best"):
+            return []
+        vl = self._val_by_step()
+        cands = []
+        for f in ckpt_paths:
+            n = int(os.path.basename(f).split("_")[0])
+            if n in vl:
+                cands.append((vl[n], -n))
+        return [(loss, -neg) for loss, neg in sorted(cands)]
+
+    def _score_adapter(self, ckpt_path, cfg):
+        """Exact loss of one checkpoint on the fixed validation subset (mlx_lm.lora --test)."""
+        tmp = os.path.join(self.adapter_dir, "score_tmp")
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        shutil.copy(os.path.join(self.adapter_dir, "adapter_config.json"), os.path.join(tmp, "adapter_config.json"))
+        os.symlink(ckpt_path, os.path.join(tmp, "adapters.safetensors"))
+        test_dir = os.path.join(self.rd, "data_lora_test")
+        os.makedirs(test_dir, exist_ok=True)
+        shutil.copy(os.path.join(self.rd, "data_lora", "valid.jsonl"), os.path.join(test_dir, "test.jsonl"))
+        out = {}
+
+        def on_line(line):
+            m = re.search(r"Test loss (\d+(?:\.\d+)?|nan|inf)", line)
+            if m:
+                out["loss"] = float(m.group(1))
+
+        try:
+            rc = self.stream([os.path.join(VENV_BIN, "mlx_lm.lora"), "--model", self.model_path, "--test",
+                              "--data", test_dir, "--adapter-path", tmp, "--mask-prompt",
+                              "--batch-size", str(cfg["batch_size"]), "--test-batches", "-1",
+                              "--max-seq-length", str(cfg["max_seq_length"])], on_line)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        loss = out.get("loss")
+        if rc != 0 or loss is None or not math.isfinite(loss):
+            return None
+        return loss
+
+    def select_best_checkpoint(self):
+        """Make the lowest-validation-loss checkpoint the model used by eval, fuse, Ollama and GGUF."""
+        cfg = self.state.get("train_cfg") or {}
+        if not cfg.get("select_best"):
+            return
+        total = cfg["iters"]
+        ckpts = sorted(glob.glob(os.path.join(self.ckpt_dir, "*_adapters.safetensors")))
+        final_path = os.path.join(self.ckpt_dir, f"{total:07d}_adapters.safetensors")
+        vl = self._val_by_step()
+        ranked = self._ranked_steps(ckpts)
+        final_copy = os.path.join(self.adapter_dir, "final_adapters.safetensors")
+        # exact re-score of the shortlisted candidates + the final checkpoint (cached in state for resume)
+        scores = {int(k): v for k, v in (self.state.get("checkpoint_scores") or {}).items()}
+        cand_steps = [st for _, st in ranked[:3]] + ([total] if os.path.exists(final_path) else [])
+        cand_steps = list(dict.fromkeys(cand_steps))
+        if cand_steps:
+            mc.log(f"Best checkpoint: re-scoring steps {', '.join(map(str, cand_steps))} on the {cfg.get('val_items')} "
+                   "validation items")
+        for st in cand_steps:
+            if st in scores:
+                continue
+            sc = self._score_adapter(os.path.join(self.ckpt_dir, f"{st:07d}_adapters.safetensors"), cfg)
+            scores[st] = sc
+            self.state["checkpoint_scores"] = {str(k): v for k, v in scores.items()}
+            self.save_state()
+        exact = [(v, -k) for k, v in scores.items() if v is not None and k in cand_steps]
+        best = None
+        if exact:
+            loss, neg = min(exact)
+            best = (loss, -neg)
+        with mc.critical():
+            if os.path.exists(final_path) and not os.path.exists(final_copy):
+                shutil.copy(final_path, final_copy)
+            info = {"final_step": total, "final_val_loss": scores.get(total), "save_every": cfg.get("save_every"),
+                    "scores": {str(k): v for k, v in sorted(scores.items())}, "approx_val": {str(k): v for k, v in sorted(vl.items())},
+                    "checkpoints_scored": sum(1 for f in ckpts if int(os.path.basename(f).split("_")[0]) in vl),
+                    "val_items": cfg.get("val_items")}
+            if best is None or not os.path.exists(final_path):
+                if os.path.exists(final_path):
+                    shutil.copy(final_path, os.path.join(self.adapter_dir, "adapters.safetensors"))
+                info.update({"step": total, "val_loss": scores.get(total), "used": "final",
+                             "note": "no scored checkpoints; using the final weights"})
+            else:
+                loss, step = best
+                src = os.path.join(self.ckpt_dir, f"{step:07d}_adapters.safetensors")
+                shutil.copy(src, os.path.join(self.adapter_dir, "adapters.safetensors"))
+                info.update({"step": step, "val_loss": loss, "used": "final" if step == total else "best"})
+            self.state["best_checkpoint"] = info
+            self.save_state()
+        if info["used"] == "best":
+            mc.log(f"Best checkpoint: step {info['step']} of {total} (validation loss {info['val_loss']:.3f}; "
+                   f"final step {info['final_val_loss'] if info['final_val_loss'] is None else round(info['final_val_loss'], 3)}). "
+                   "Using it for evaluation, fuse, Ollama and the GGUF download; final weights kept as "
+                   "adapters/final_adapters.safetensors.")
+        else:
+            mc.log(f"Best checkpoint: the final step {total} had the lowest validation loss"
+                   + (f" ({info['val_loss']:.3f})" if info.get("val_loss") is not None else "") + "; using the final weights.")
+        self.prog.set_extra(best_step=info["step"], best_val_loss=info.get("val_loss"), final_step=total)
 
     def _latest_checkpoint(self):
         best, path = 0, None
@@ -251,12 +423,19 @@ class Job:
         self.prog.start_phase("train", total, done_iters, "steps", PHASE_LABELS["train"])
         if done_iters >= total and os.path.exists(os.path.join(self.adapter_dir, "adapters.safetensors")):
             mc.log("Training already complete (checkpoint at final step).")
+            if "best_checkpoint" not in self.state:
+                self.select_best_checkpoint()
             return
         remaining = total - done_iters
         self.state["segment_offset"] = done_iters
         self.save_state()
+        if cfg.get("select_best"):
+            mc.log(f"Settings: {total} steps ({cfg['epochs']} epoch(s)"
+                   + ("" if cfg.get("epochs_user") or cfg.get("iters_user") else
+                      f", default for {self.state['n_train']} training items") + f"), batch {cfg['batch_size']}; "
+                   f"checkpoint + validation loss every {cfg['save_every']} steps on {cfg['val_items']} held-out items")
         cmd = [os.path.join(VENV_BIN, "mlx_lm.lora"), "--model", self.model_path, "--train",
-               "--data", self.data_dir, "--adapter-path", self.adapter_dir, "--mask-prompt",
+               "--data", self.lora_data_dir(cfg), "--adapter-path", self.adapter_dir, "--mask-prompt",
                "--iters", str(remaining), "--batch-size", str(cfg["batch_size"]),
                "--learning-rate", str(cfg["learning_rate"]), "--num-layers", str(cfg["num_layers"]),
                "--max-seq-length", str(cfg["max_seq_length"]), "--save-every", str(cfg["save_every"]),
@@ -280,6 +459,7 @@ class Job:
             if m:
                 self.state.setdefault("val_losses", []).append([done_iters + int(m.group(1)), float(m.group(2))])
                 self.prog.set_extra(val_loss=float(m.group(2)))
+                self.save_state()  # keep val losses across a pause: they pick the best checkpoint
 
         rc = self.stream(cmd, on_line)
         self._normalize_checkpoints()
@@ -288,6 +468,7 @@ class Job:
         # final weights are adapters/adapters.safetensors; record a final checkpoint too
         shutil.copy(os.path.join(self.adapter_dir, "adapters.safetensors"),
                     os.path.join(self.ckpt_dir, f"{total:07d}_adapters.safetensors"))
+        self.select_best_checkpoint()
         self.update(total)
 
     def phase_loss(self):
@@ -399,6 +580,27 @@ class Job:
         except Exception:  # noqa: BLE001
             pass
 
+    def grounding(self, rows):
+        """Source passages for held-out items that came from a grounded Generate Questions job (else None)."""
+        if getattr(self, "_grounding", None) is not None and len(self._grounding) == len(rows):
+            return self._grounding
+        passages = [None] * len(rows)
+        if ds is not None and self.p.get("GROUNDED_GRADING", "1") not in ("0", 0, "off", "false"):
+            try:
+                passages, info = ds.lookup_sources([r["prompt"] for r in rows], exclude_job=self.id)
+                if info["matched"]:
+                    mc.log(f"Grounded grading: {info['matched']}/{info['total']} held-out questions matched to source "
+                           f"document sections (jobs: {', '.join(info['jobs'])}); the teacher grades those against the source.")
+                else:
+                    mc.log("Grounded grading: no held-out questions matched a source document; grading against the reference only.")
+                self.state["grounded_grading"] = {"matched": info["matched"], "total": info["total"],
+                                                  "jobs": list(info["jobs"])}
+            except Exception as e:  # noqa: BLE001
+                mc.log(f"Grounded grading lookup failed ({e}); grading against the reference only.")
+                passages = [None] * len(rows)
+        self._grounding = passages
+        return passages
+
     def phase_grade(self, which):
         phase = f"grade_{which}"
         rows = self.eval_items()
@@ -409,18 +611,18 @@ class Job:
         teacher = self.state.get("teacher") or mc.pick_teacher()
         self.state["teacher"] = teacher
         self.prog.start_phase(phase, len(rows), len(done), "grades", PHASE_LABELS[phase])
+        passages = self.grounding(rows) if todo else [None] * len(rows)
         t0, n_here = time.time(), 0
         for i in todo:
             mc.check_stop()
             ans = (answers.get(i) or {}).get("answer", "")
-            user = (f"QUESTION:\n{rows[i]['prompt']}\n\nREFERENCE ANSWER:\n{rows[i]['completion']}\n\n"
-                    f"STUDENT ANSWER:\n{ans[:4000] if ans else '(no answer)'}")
+            user, system, ctx = self.grade_message(rows[i], ans, passages[i])
             g = None
             for attempt in range(3):
                 try:
-                    r = mc.teacher_chat(teacher, [{"role": "system", "content": GRADER_SYSTEM},
+                    r = mc.teacher_chat(teacher, [{"role": "system", "content": system},
                                                   {"role": "user", "content": user}],
-                                        temperature=0.0 if attempt == 0 else 0.3, num_predict=400, num_ctx=8192, fmt=GRADE_SCHEMA, timeout=600)
+                                        temperature=0.0 if attempt == 0 else 0.3, num_predict=400, num_ctx=ctx, fmt=GRADE_SCHEMA, timeout=600)
                     g = parse_json_obj(r["message"].get("content", ""))
                     g = {"correct": bool(g["correct"]), "reasoning_score": max(1, min(5, int(g["reasoning_score"]))),
                          "explanation": str(g.get("explanation", ""))[:400]}
@@ -434,13 +636,29 @@ class Job:
                 g = {"correct": False, "reasoning_score": 1, "explanation": "grader failed", "grader_error": True}
             with mc.critical():
                 with open(out_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"i": i, **g}, ensure_ascii=False) + "\n")
+                    f.write(json.dumps({"i": i, **g, **({"grounded": True} if passages[i] else {})}, ensure_ascii=False) + "\n")
             n_here += 1
             self.state["rates"][phase] = (time.time() - t0) / n_here
             self.update(len(done) + n_here)
             if n_here % 10 == 0:
                 self.save_state()
         self.save_state()
+
+    @staticmethod
+    def grade_message(row, ans, passage):
+        """(user message, system prompt, num_ctx) for one grading call."""
+        user = (f"QUESTION:\n{row['prompt']}\n\nREFERENCE ANSWER:\n{row['completion']}\n\n"
+                f"STUDENT ANSWER:\n{ans[:4000] if ans else '(no answer)'}")
+        if not passage:
+            return user, GRADER_SYSTEM, 8192
+        user = f"{user}\n\nSOURCE PASSAGE (official document this question was written from):\n{passage}"
+        return user, GRADER_SYSTEM + GROUNDED_GRADER_ADDENDUM, 16384
+
+    def train_loss_at_checkpoint(self):
+        """Last reported train loss at or before the kept checkpoint (compare with the kept model's val loss)."""
+        bc = self.state.get("best_checkpoint") or {}
+        pts = [l for st, l in (self.state.get("train_losses") or []) if bc.get("step") is None or st <= bc["step"]]
+        return pts[-1] if pts else None
 
     def phase_report(self):
         rows = self.eval_items()
@@ -476,6 +694,9 @@ class Job:
             "final_train_loss": (self.state.get("train_losses") or [[None, None]])[-1][1],
             "validation_loss": self.state.get("loss"),
             "untrained": base, "trained": trained,
+            "grounded_grading": self.state.get("grounded_grading"),
+            "best_checkpoint": self.state.get("best_checkpoint"),
+            "train_loss_at_checkpoint": self.train_loss_at_checkpoint(),
             "accuracy_change": (round(trained["accuracy"] - base["accuracy"], 4)
                                 if base["accuracy"] is not None and trained["accuracy"] is not None else None),
             "examples": examples, "created_at": mc.now_iso(),
@@ -491,7 +712,14 @@ class Job:
               f"- Data: {report['data']['n_total']} pairs -> {report['data']['n_train']} train / "
               f"{report['data']['n_valid']} held out (all {report['data']['n_eval']} held-out prompts evaluated)",
               f"- Training: {cfg.get('iters')} steps, batch {cfg.get('batch_size')}, learning rate {cfg.get('learning_rate')}",
-              f"- Grader: {report['teacher_grader']}", "",
+              *([f"- Checkpoint used: step {bc['step']} of {bc['final_step']}"
+                 + (f" (lowest validation loss {bc['val_loss']:.3f}" if bc.get('val_loss') is not None else " (")
+                 + (f"; final step {bc['final_val_loss']:.3f})" if bc.get('used') == 'best' and bc.get('final_val_loss') is not None else ")")]
+                if (bc := self.state.get("best_checkpoint")) else []),
+              f"- Grader: {report['teacher_grader']}"
+              + (f" (graded against source documents for {report['grounded_grading']['matched']} of "
+                 f"{report['grounded_grading']['total']} questions)"
+                 if (report.get("grounded_grading") or {}).get("matched") else ""), "",
               "| | Untrained | Trained |", "|---|---|---|",
               f"| Accuracy (final answer correct) | {pct(base['accuracy'])} ({base['correct']}/{base['graded']}) | "
               f"{pct(trained['accuracy'])} ({trained['correct']}/{trained['graded']}) |",
@@ -568,10 +796,153 @@ class Job:
             self.state["ollama_smoke"] = r["message"]["content"][:200]
         except Exception as e:  # noqa: BLE001
             raise SystemExit(f"Registered {tag} but it failed to answer: {e}")
-        shutil.rmtree(os.path.join(self.rd, "ollama-import-tmp"), ignore_errors=True)
+        # ollama-import-tmp (the dequantized model) is reused by phase_gguf, which deletes it
         self.prog.set_extra(ollama_tag=tag)
         self.update(1)
         mc.log(f"Model available in Ollama as: {tag}")
+
+    def phase_gguf(self):
+        """Portable Ollama package (ollama-gguf.zip). Best effort: a failure is recorded in
+        gguf_status.json / state.json and never fails the train job."""
+        self.prog.start_phase("gguf", 1, 0, "steps", PHASE_LABELS["gguf"])
+        deq = os.path.join(self.rd, "ollama-import-tmp")
+        cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "export_gguf.py"),
+               self.id, "--force"]
+        if os.path.exists(os.path.join(deq, "config.json")):
+            cmd += ["--hf-dir", deq]
+        try:
+            rc = self.stream(cmd)
+            if rc != 0:
+                raise RuntimeError(f"export_gguf.py exited with code {rc}")
+            self.state.pop("gguf_error", None)
+        except mc.StopRequested:
+            raise
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            st = mc.read_json(os.path.join(self.rd, "gguf_status.json"), {}) or {}
+            if st.get("state") != "failed":
+                mc.write_json_atomic(os.path.join(self.rd, "gguf_status.json"),
+                                     {**st, "state": "failed", "message": "Build failed", "error": msg[:1000],
+                                      "pid": None, "finished_at": mc.now_iso()})
+            self.state["gguf_error"] = (st.get("error") or msg)[:1000]
+            mc.log(f"WARNING: Ollama GGUF download was not built ({self.state['gguf_error'][:300]}). "
+                   "The trained model is fine; the fused MLX model and Ollama tag are still available.")
+        shutil.rmtree(deq, ignore_errors=True)
+        self.update(1)
+
+    # ------------------------------------------------------------ advice
+    def build_advice(self) -> dict:
+        """Ask the Teacher to analyze the held-out questions the trained Student got wrong.
+        Writes advice.json + advice.md. Raises on failure (callers decide how to handle it)."""
+        rows = self.eval_items()
+        ans = self._read_done(os.path.join(self.eval_dir, "answers_trained.jsonl"))
+        grd = {w: self._read_done(os.path.join(self.eval_dir, f"grades_{w}.jsonl")) for w in ("base", "trained")}
+        wrong = [i for i in range(len(rows))
+                 if i in grd["trained"] and not grd["trained"][i].get("correct") and not grd["trained"][i].get("grader_error")]
+        report = mc.read_json(os.path.join(self.rd, "eval_report.json"), {}) or {}
+        out = {"job_id": self.id, "n_eval": len(rows), "n_wrong": len(wrong), "n_sampled": 0,
+               "teacher": None, "markdown": None, "error": None, "created_at": mc.now_iso()}
+        if not wrong:
+            out["markdown"] = ("## Patterns in the misses\n- The trained Student answered every graded held-out question "
+                               "correctly, so there are no misses to analyze.\n")
+            return self._save_advice(out)
+        # regressions (untrained right, trained wrong) first, then the rest; spread evenly, deterministic
+        regress = [i for i in wrong if grd["base"].get(i, {}).get("correct")]
+        rest = [i for i in wrong if i not in set(regress)]
+        rng = random.Random(7)
+        pick = regress[:ADVICE_MAX_ITEMS // 2]
+        pick += sorted(rng.sample(rest, min(len(rest), ADVICE_MAX_ITEMS - len(pick))))
+        if len(pick) < ADVICE_MAX_ITEMS:
+            pick += [i for i in regress if i not in set(pick)][:ADVICE_MAX_ITEMS - len(pick)]
+        pick = sorted(pick)
+        grounded = bool((self.state.get("grounded_grading") or {}).get("matched"))
+        passages = self.grounding(rows) if grounded else [None] * len(rows)
+
+        def clip(t, n, tail=False):
+            t = re.sub(r"\s+\n", "\n", str(t or "").strip())
+            if len(t) <= n:
+                return t
+            return ("…" + t[-n:]) if tail else (t[:n] + "…")
+
+        items = []
+        for k, i in enumerate(pick, 1):
+            g = grd["trained"][i]
+            block = [f"### Item #{i}" + (" (untrained Student had this RIGHT)" if i in regress else ""),
+                     f"QUESTION: {clip(rows[i]['prompt'], 600)}",
+                     f"EXPECTED ANSWER (answer key): {clip(rows[i]['completion'], 400, tail=True)}",
+                     f"STUDENT ANSWER: {clip((ans.get(i) or {}).get('answer', ''), 400, tail=True) or '(no answer)'}",
+                     f"GRADER NOTE: {clip(g.get('explanation'), 220)}"]
+            if passages[i]:
+                block.append(f"SOURCE SECTION: {clip(passages[i], 500)}")
+            items.append("\n".join(block))
+        U, T = report.get("untrained") or {}, report.get("trained") or {}
+        L = report.get("validation_loss") or self.state.get("loss") or {}
+        cfg = self.state.get("train_cfg") or {}
+
+        def pct(x):
+            return "n/a" if x is None else f"{100 * x:.1f}%"
+
+        summary = "\n".join([
+            f"Student model: {mc.STUDENTS[self.student]['label']}",
+            f"Training items: {self.state.get('n_train')}; held-out items evaluated: {len(rows)}",
+            f"Final answer correct: untrained {pct(U.get('accuracy'))} -> trained {pct(T.get('accuracy'))}",
+            f"Average reasoning score (1-5): untrained {U.get('avg_reasoning_score')} -> trained {T.get('avg_reasoning_score')}",
+            f"Validation loss: untrained {(L.get('base') or {}).get('loss')} -> trained {(L.get('trained') or {}).get('loss')}; "
+            f"final train loss {report.get('final_train_loss')}",
+            f"Training settings: {cfg.get('iters')} steps, {cfg.get('epochs')} epochs, batch {cfg.get('batch_size')}, "
+            f"learning rate {cfg.get('learning_rate')}, {cfg.get('num_layers')} LoRA layers",
+            f"Checkpoint used: step {(self.state.get('best_checkpoint') or {}).get('step', cfg.get('iters'))} of {cfg.get('iters')} "
+            f"(the one with the lowest validation loss during training)",
+            f"Questions grounded in source documents: {'yes' if grounded else 'no'}",
+            f"The trained Student got {len(wrong)} of {len(rows)} held-out questions wrong "
+            f"({len(regress)} of those the untrained Student had right). {len(pick)} are shown below.",
+        ])
+        user = f"EVALUATION SUMMARY\n{summary}\n\nMISSED QUESTIONS (sample)\n\n" + "\n\n".join(items)
+        teacher = self.state.get("teacher") or report.get("teacher_grader") or mc.pick_teacher()
+        ctx = 32768 if len(user) > 40000 else 24576 if len(user) > 24000 else 16384
+        mc.log(f"Advice: asking {teacher} to analyze {len(pick)} of {len(wrong)} missed questions "
+               f"({len(user):,} chars, num_ctx {ctx})")
+        t0 = time.time()
+        text = ""
+        for attempt in range(2):
+            r = mc.teacher_chat(teacher, [{"role": "system", "content": ADVICE_SYSTEM}, {"role": "user", "content": user}],
+                                temperature=0.3, num_predict=1400, num_ctx=ctx, timeout=1200, think=False)
+            text = re.sub(r"<think>.*?</think>", "", r["message"].get("content", "") or "", flags=re.S).strip()
+            if len(text) > 80:
+                break
+            mc.log(f"Advice attempt {attempt + 1}: reply too short ({len(text)} chars); retrying")
+        if len(text) <= 80:
+            raise RuntimeError(f"Teacher reply was empty or too short: {text[:120]!r}")
+        out.update({"teacher": teacher, "n_sampled": len(pick), "n_regressions": len(regress), "items": pick,
+                    "markdown": text, "seconds": round(time.time() - t0, 1), "created_at": mc.now_iso()})
+        mc.log(f"Advice written in {out['seconds']:.0f}s ({len(text)} chars)")
+        return self._save_advice(out)
+
+    def _save_advice(self, out: dict) -> dict:
+        mc.write_json_atomic(os.path.join(self.rd, "advice.json"), out)
+        if out.get("markdown"):
+            with open(os.path.join(self.rd, "advice.md"), "w", encoding="utf-8") as f:
+                f.write("# Teacher's analysis of missed questions\n\n" + out["markdown"].strip() + "\n")
+        return out
+
+    def phase_advice(self):
+        """Best effort: a failure is recorded in advice.json / state.json and never fails the job."""
+        self.prog.start_phase("advice", 1, 0, "steps", PHASE_LABELS["advice"])
+        try:
+            self.build_advice()
+            self.state.pop("advice_error", None)
+        except mc.StopRequested:
+            raise
+        except Exception as e:  # noqa: BLE001
+            msg = f"{type(e).__name__}: {e}"[:1000]
+            self.state["advice_error"] = msg
+            try:
+                mc.write_json_atomic(os.path.join(self.rd, "advice.json"),
+                                     {"job_id": self.id, "markdown": None, "error": msg, "created_at": mc.now_iso()})
+            except Exception:  # noqa: BLE001
+                pass
+            mc.log(f"WARNING: Teacher analysis of missed questions failed ({msg[:300]}). The job is otherwise complete.")
+        self.update(1)
 
     def run(self):
         mc.log(f"Train job {self.id}: student={self.student} input={self.meta.get('inputFile')}")
@@ -580,6 +951,7 @@ class Job:
             "answer_base": lambda: self.phase_answer("base"), "answer_trained": lambda: self.phase_answer("trained"),
             "grade_base": lambda: self.phase_grade("base"), "grade_trained": lambda: self.phase_grade("trained"),
             "report": self.phase_report, "fuse": self.phase_fuse, "register": self.phase_register,
+            "gguf": self.phase_gguf, "advice": self.phase_advice,
         }
         for ph in PHASES:
             if self.done(ph):
@@ -597,8 +969,19 @@ class Job:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--job-id", required=True)
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--job-id")
+    g.add_argument("--advice-only", metavar="JOB_ID",
+                   help="Only (re)write advice.json for a finished train job; does not touch progress or status.")
     args = ap.parse_args()
+    if args.advice_only:
+        job = Job(args.advice_only)
+        if not os.path.exists(os.path.join(job.rd, "eval", "grades_trained.jsonl")):
+            raise SystemExit("This job has no graded evaluation yet.")
+        out = job.build_advice()
+        print(json.dumps({k: v for k, v in out.items() if k not in ("markdown", "items")}))
+        print(out.get("markdown") or "")
+        return
     mc.run_main(args.job_id, lambda: Job(args.job_id).run())
 
 

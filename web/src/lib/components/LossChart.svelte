@@ -1,5 +1,10 @@
 <script lang="ts">
-	let { train, valid, totalSteps }: { train: [number, number][]; valid: [number, number][]; totalSteps: number | null } = $props();
+	let {
+		train,
+		valid,
+		totalSteps,
+		bestStep = null
+	}: { train: [number, number][]; valid: [number, number][]; totalSteps: number | null; bestStep?: number | null } = $props();
 	const W = 560;
 	const H = 180;
 	const P = 32;
@@ -17,8 +22,15 @@
 	<text x={P - 4} y={H - P + 8} fill="#71717a" font-size="10" text-anchor="end">0</text>
 	<text x={W - 8} y={H - 8} fill="#71717a" font-size="10" text-anchor="end">step {maxX}</text>
 	<polyline points={line} fill="none" stroke="#34d399" stroke-width="1.5" />
+	{#if bestStep != null}
+		<line x1={x(bestStep)} y1={8} x2={x(bestStep)} y2={H - P + 8} stroke="#fbbf24" stroke-dasharray="3 3" />
+		<text x={x(bestStep) + 3} y={18} fill="#fbbf24" font-size="10">kept: step {bestStep}</text>
+	{/if}
 	{#each valid as p, i (i)}
 		<circle cx={x(p[0])} cy={y(p[1])} r="3" fill="#a78bfa" />
 	{/each}
 </svg>
-<p class="text-xs text-zinc-500"><span class="text-emerald-400">—</span> training loss <span class="ml-3 text-violet-400">●</span> validation loss (lower is better)</p>
+<p class="text-xs text-zinc-500">
+	<span class="text-emerald-400">—</span> training loss <span class="ml-3 text-violet-400">●</span> validation loss (lower is better)
+	{#if bestStep != null}<span class="ml-3 text-amber-400">┆</span> checkpoint kept (lowest validation loss){/if}
+</p>

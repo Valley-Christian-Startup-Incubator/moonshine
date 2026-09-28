@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { pushToast } from '$lib/toast.svelte';
 
-	let { id, status, pending = null, compact = false }: { id: string; status: string; pending?: string | null; compact?: boolean } = $props();
+	let {
+		id,
+		status,
+		owner,
+		pending = null,
+		compact = false
+	}: { id: string; status: string; owner: string; pending?: string | null; compact?: boolean } = $props();
+	// Only the job's owner gets Pause / Resume / Cancel (the server enforces this too, with a 403).
+	const isOwner = $derived(Boolean($page.data.userName) && $page.data.userName === owner);
 	let busy = $state(false);
 
 	async function act(action: 'pause' | 'resume' | 'cancel') {
@@ -30,7 +39,9 @@
 </script>
 
 <div class="flex flex-wrap gap-2">
-	{#if pending}
+	{#if !isOwner}
+		{#if pending}<span class="text-xs text-zinc-500">{pending === 'pause' ? 'Pausing…' : pending === 'cancel' || pending === 'purge' ? 'Cancelling…' : pending === 'resume' ? 'Resuming…' : ''}</span>{/if}
+	{:else if pending}
 		<span class="text-xs text-zinc-500">{pending === 'pause' ? 'Pausing…' : pending === 'cancel' || pending === 'purge' ? 'Cancelling…' : pending === 'resume' ? 'Resuming…' : ''}</span>
 	{:else}
 		{#if status === 'running'}

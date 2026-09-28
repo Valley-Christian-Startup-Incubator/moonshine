@@ -9,6 +9,7 @@ import {
 	submitGenerateJob,
 	submitTrainJob,
 	TRAIN_ADVANCED_KEYS,
+	validateSourceDocs,
 	type TrainAdvanced
 } from '$lib/server/queue';
 
@@ -35,6 +36,12 @@ export const actions: Actions = {
 		const source = form.get('source');
 		const promptText = String(form.get('promptText') ?? '');
 		const file = uploaded(form, 'file');
+		const docFiles = form.getAll('docs').filter((f): f is File => f instanceof File && f.size > 0);
+		try {
+			validateSourceDocs(docFiles.map((f) => ({ name: f.name, size: f.size })));
+		} catch (e) {
+			return fail(400, { stage: 'questions', error: e instanceof Error ? e.message : String(e) });
+		}
 		let promptFile: { name: string; data: Uint8Array };
 		if (source === 'session') {
 			if (promptText.trim().length < 20) return fail(400, { stage: 'questions', error: 'There is no PROMPT from this session yet.' });
@@ -45,7 +52,8 @@ export const actions: Actions = {
 		}
 		let id: string;
 		try {
-			id = await submitGenerateJob({ ownerName: locals.userName, promptFile, count });
+			const docs = await Promise.all(docFiles.map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) })));
+			id = await submitGenerateJob({ ownerName: locals.userName, promptFile, count, docs });
 		} catch (e) {
 			return fail(400, { stage: 'questions', error: e instanceof Error ? e.message : String(e) });
 		}

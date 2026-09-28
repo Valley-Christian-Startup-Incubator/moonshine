@@ -51,6 +51,19 @@ export function formatEstimate(sec: number): string {
 	return h > 0 ? `about ${h} h ${m} min` : `about ${m} min`;
 }
 
+/** "about 1 h 30 min – 1 h 45 min" range for up-front estimates. */
+export function formatEstimateRange(loSec: number, hiSec: number): string {
+	const part = (sec: number) => {
+		const s = Math.max(0, Math.round(sec));
+		const h = Math.floor(s / 3600);
+		const m = Math.max(1, Math.round((s % 3600) / 60));
+		return h > 0 ? (m === 60 ? `${h + 1} h 0 min` : `${h} h ${m} min`) : m === 60 ? '1 h 0 min' : `${m} min`;
+	};
+	const a = part(loSec);
+	const b = part(hiSec);
+	return a === b ? `about ${a}` : `about ${a} – ${b}`;
+}
+
 export function formatTimestamp(iso?: string | null): string {
 	if (!iso) return '—';
 	return new Date(iso).toLocaleString(undefined, {

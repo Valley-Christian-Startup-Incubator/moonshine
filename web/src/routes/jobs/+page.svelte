@@ -1,4 +1,5 @@
 <script lang="ts">
+	import HowMoonshineWorks from '$lib/components/HowMoonshineWorks.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
 	import JobControls from '$lib/components/JobControls.svelte';
@@ -27,6 +28,8 @@
 </script>
 
 <svelte:head><title>Jobs — Moonshine</title></svelte:head>
+
+<HowMoonshineWorks />
 
 <div class="flex flex-wrap items-center justify-between gap-3">
 	<h1 class="text-2xl font-semibold text-zinc-100">Jobs</h1>
@@ -73,7 +76,10 @@
 			{#each jobs as job (job.id)}
 				<tr class="border-b border-border-subtle last:border-0 hover:bg-bg-subtle/50">
 					<td class="px-4 py-3">
-						<a href="/jobs/{job.id}" class="font-medium text-zinc-100 hover:underline">{JOB_TYPE_LABELS[job.type]}</a>
+						<div class="flex flex-wrap items-center gap-2">
+							<a href="/jobs/{job.id}" class="font-medium text-zinc-100 hover:underline">{JOB_TYPE_LABELS[job.type]}</a>
+							<a href="/jobs/{job.id}" class="btn-secondary px-2 py-1 text-xs" aria-label="Details for job {job.id}">Details</a>
+						</div>
 						<p class="font-mono text-xs text-zinc-500">
 							{job.id}{#if job.type === 'train'} · {job.params.STUDENT}{/if}{#if job.type === 'generate'} · {job.params.COUNT} questions{/if}
 						</p>
@@ -87,7 +93,7 @@
 					</td>
 					<td class="px-4 py-3"><ProgressBar progress={job.progress} status={job.status} /></td>
 					<td class="px-4 py-3 text-xs text-zinc-500">{formatTimestamp(job.submittedAt)}</td>
-					<td class="px-4 py-3"><JobControls id={job.id} status={job.status} pending={job.pendingAction} compact /></td>
+					<td class="px-4 py-3"><JobControls id={job.id} status={job.status} owner={job.ownerName} pending={job.pendingAction} compact /></td>
 				</tr>
 			{:else}
 				<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-zinc-500">No jobs yet. Start one in the <a href="/" class="underline">Lab</a>.</td></tr>

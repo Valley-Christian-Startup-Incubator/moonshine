@@ -1,25 +1,25 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
-	import { replaceState } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import InterviewChat from '$lib/components/InterviewChat.svelte';
-	import { formatEstimate } from '$lib/format';
-	import { SECONDS_PER_GENERATED_ITEM } from '$lib/types';
+	import HowMoonshineWorks from '$lib/components/HowMoonshineWorks.svelte';
+	import { formatEstimateRange } from '$lib/format';
+	import { ANSWER_CHECK_OVERHEAD, SECONDS_PER_GENERATED_ITEM, SECONDS_PER_GROUNDED_ITEM } from '$lib/types';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
+	// The step is chosen with the "How Moonshine works" panel (it is the step switcher) and ?stage=.
 	type Stage = 'prompt' | 'questions' | 'train';
-	const STAGES: { id: Stage; n: number; label: string }[] = [
-		{ id: 'prompt', n: 1, label: 'Generate Prompt' },
-		{ id: 'questions', n: 2, label: 'Generate Questions' },
-		{ id: 'train', n: 3, label: 'Train' }
-	];
+	const stageFrom = (v: string | null): Stage => (v === 'questions' || v === 'train' ? v : 'prompt');
 	const initial = $page.url.searchParams.get('stage');
-	let stage = $state<Stage>(
-		untrack(() => (form?.stage as Stage) ?? (initial === 'questions' || initial === 'train' ? initial : 'prompt'))
-	);
+	let stage = $state<Stage>(untrack(() => (form?.stage as Stage) ?? stageFrom(initial)));
+	// a real navigation to this page (e.g. the header "Lab" link or /?stage=train) re-reads ?stage=
+	afterNavigate((nav) => {
+		if (nav.type !== 'enter' && nav.to?.url.pathname === '/') stage = stageFrom(nav.to.url.searchParams.get('stage'));
+	});
 	function go(s: Stage) {
 		stage = s;
 		const u = new URL($page.url);
@@ -49,8 +49,23 @@
 	// ---- Generate Questions
 	let source = $state<'session' | 'file'>('file');
 	let count = $state(untrack(() => data.defaultCount));
-	const estimate = $derived(formatEstimate((Number(count) || 0) * SECONDS_PER_GENERATED_ITEM));
 	let submitting = $state(false);
+	let docInfo = $state<{ n: number; mb: number; bad: string[] } | null>(null);
+	function inspectDocs(e: Event) {
+		const files = Array.from((e.currentTarget as HTMLInputElement).files ?? []);
+		docInfo = files.length
+			? {
+					n: files.length,
+					mb: files.reduce((a, f) => a + f.size, 0) / (1024 * 1024),
+					bad: files.filter((f) => !/\.(pdf|txt|md|markdown)$/i.test(f.name)).map((f) => f.name)
+				}
+			: null;
+	}
+
+	const perItem = $derived(docInfo && !docInfo.bad.length ? SECONDS_PER_GROUNDED_ITEM : SECONDS_PER_GENERATED_ITEM);
+	const perItemLo = $derived(perItem * ANSWER_CHECK_OVERHEAD[0]);
+	const perItemHi = $derived(perItem * ANSWER_CHECK_OVERHEAD[1]);
+	const estimate = $derived(formatEstimateRange((Number(count) || 0) * perItemLo, (Number(count) || 0) * perItemHi));
 
 	// ---- Train
 	const firstAvailable = untrack(() => data.students.find((s) => s.available)?.id ?? '');
@@ -85,6 +100,54 @@
 	const today = new Date();
 	const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
 
+	// ---- Trainer (advanced) settings. Defaults mirror scripts/train_eval.py train_config().
+	const TRAINER_FIELDS: { name: string; label: string; min: string; step?: string; placeholder: string; help: string }[] = [
+		{
+			name: 'ITERS',
+			label: 'Training Steps',
+			min: '1',
+			placeholder: 'auto (from Passes)',
+			help: 'A step is one small practice round: the Student looks at a few examples, and the Trainer nudges it toward the right answers. More steps means more practice but a longer job, and too many can make the model memorize instead of learn. Default: blank (automatic), which works out the steps from Passes over the Data and Examples per Step (at least 20, at most 3,000). If you type a number here, it overrides Passes over the Data. Either way, Moonshine saves a checkpoint about every tenth of the steps and keeps the one that scored best on held-out questions, so too many steps costs time but does not ruin the model.'
+		},
+		{
+			name: 'EPOCHS',
+			label: 'Passes over the Data',
+			min: '0.1',
+			step: '0.1',
+			placeholder: 'auto: 2, or 1 for 1,000+',
+			help: 'How many times the Student reads through all of your training examples. Moonshine turns this into steps: passes × training examples ÷ examples per step. Default: 2, or 1 when there are more than 1,000 training examples (big sets learn enough in one pass, and a second pass mostly memorizes). Try 3 if the validation loss was still falling at the end; this box is ignored if you fill in Training Steps.'
+		},
+		{
+			name: 'LEARNING_RATE',
+			label: 'Learning Rate',
+			min: '0',
+			step: 'any',
+			placeholder: '0.0001',
+			help: 'How big a change the Trainer makes to the Student after each step. Higher learns faster but can overshoot and make answers worse; lower is safer but slower. Default: 0.0001 (1e-4). If results get worse, try 0.00005; if nothing changes, try 0.0002.'
+		},
+		{
+			name: 'BATCH_SIZE',
+			label: 'Examples per Step (Batch Size)',
+			min: '1',
+			placeholder: '4',
+			help: 'How many examples the Student studies together in one step. Bigger batches give steadier learning but use more memory and, when steps are automatic, mean fewer steps for the same number of passes. Default: 4 (Moonshine lowers it automatically if you have very few examples). Most people should leave it at 4.'
+		},
+		{
+			name: 'NUM_LAYERS',
+			label: 'Layers to Train',
+			min: '1',
+			placeholder: '16',
+			help: 'An AI model is a stack of layers. The Trainer only adjusts small add-ons (LoRA adapters) on the top layers and leaves the rest frozen. More layers can learn more but is slower and uses more memory; fewer is faster but learns less. Default: 16.'
+		},
+		{
+			name: 'MAX_SEQ_LENGTH',
+			label: 'Max Tokens per Example',
+			min: '128',
+			placeholder: '2048',
+			help: 'The longest an example (question plus answer) can be, measured in tokens (a token is roughly 3/4 of a word). Anything longer gets cut off. Raising it lets long answers fit but uses more memory; lowering it speeds things up but may chop answers. Default: 2048 (about 1,500 words), which fits most examples.'
+		}
+	];
+
 	const submitEnhance = () => {
 		submitting = true;
 		return async ({ update }: { update: () => Promise<void> }) => {
@@ -96,52 +159,62 @@
 
 <svelte:head><title>Lab — Moonshine</title></svelte:head>
 
-<h1 class="text-2xl font-semibold text-zinc-100">Lab</h1>
-<p class="mt-1 text-sm text-zinc-400">Three steps: write a PROMPT, generate questions from it, then train a small model on the questions.</p>
-
-<div class="mt-5 flex flex-wrap gap-2" role="tablist">
-	{#each STAGES as s (s.id)}
-		<button type="button" role="tab" aria-selected={stage === s.id} class="tab {stage === s.id ? 'tab-active' : ''}" onclick={() => go(s.id)}>
-			<span class="mr-1 text-zinc-500">{s.n}.</span>{s.label}
-		</button>
-	{/each}
-</div>
+<HowMoonshineWorks current={stage} onSelect={go} />
 
 {#if form?.error}
 	<p role="alert" class="mt-4 rounded-md bg-red-950 px-4 py-3 text-sm text-red-300">{form.error}</p>
 {/if}
 
 {#if stage === 'prompt'}
-	<section class="mt-6 space-y-5">
-		<div class="rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
-			<strong>The result of this step is a PROMPT, not questions.</strong> A PROMPT is a set of instructions that
-			tells the teacher model how to write your practice questions. In step 2 you give it to Moonshine, and Moonshine
-			writes the questions.
+	<section class="mt-2 space-y-5">
+		<div class="space-y-3 text-sm text-zinc-300">
+			<h2 class="text-lg font-semibold text-zinc-100">This step: Generate Prompt</h2>
+			<p>
+				In this step an AI asks you questions about your subject, your audience, and what a good answer looks like.
+				Then it writes a curated prompt for you.
+			</p>
+			<div class="rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-emerald-100">
+				<strong>The result of this step is a PROMPT, not questions.</strong> A prompt is a set of instructions that tells
+				the Teacher how to write your training questions. You'll upload it in step 2, and the Teacher will turn it into
+				thousands of training examples. Each one looks like
+				<code class="rounded bg-black/30 px-1 font-mono text-xs">{'{"prompt": "...", "completion": "..."}'}</code>.
+			</div>
+			<p>
+				<strong class="text-zinc-100">Choose your path.</strong> Both paths end with the same kind of prompt, so pick
+				whichever you prefer.
+			</p>
 		</div>
 
 		<div class="grid gap-5 lg:grid-cols-3">
-			<div class="lg:col-span-2">
-				<h2 class="mb-2 text-sm font-semibold text-zinc-200">Path 1: Interview with the teacher (recommended)</h2>
+			<div class="card border-sky-900 p-4 lg:col-span-2" id="path-local">
+				<p class="text-xs font-semibold uppercase tracking-widest text-sky-400">Path 1</p>
+				<h3 class="mb-2 text-base font-semibold text-zinc-100">Local (here in Moonshine)</h3>
 				<p class="mb-3 text-sm text-zinc-400">
-					Answer a few questions about your program. When the teacher has enough, it writes your PROMPT.
+					Moonshine's own Teacher AI interviews you right on this page. Nothing leaves the school server. When you're
+					done, download or save the prompt.
 				</p>
 				<InterviewChat teacher={data.teacher} {onPrompt} />
 			</div>
-			<div>
-				<h2 class="mb-2 text-sm font-semibold text-zinc-200">Path 2: Use your own AI</h2>
-				<div class="card space-y-3 p-4 text-sm text-zinc-400">
-					<p>
-						Download the interview instructions (the "meta-prompt") and paste them into ChatGPT, Claude or Gemini. They will
-						interview you and write the same kind of PROMPT.
-					</p>
-					<div class="flex gap-2">
-						<a class="btn-secondary" href="/api/meta-prompt?format=md" download>Download .md</a>
-						<a class="btn-secondary" href="/api/meta-prompt?format=txt" download>Download .txt</a>
-					</div>
-					<p class="text-xs text-zinc-500">Save the PROMPT it gives you as a .md or .txt file, then go to step 2.</p>
+			<div class="card space-y-3 border-violet-900 p-4 text-sm text-zinc-400" id="path-remote">
+				<div>
+					<p class="text-xs font-semibold uppercase tracking-widest text-violet-400">Path 2</p>
+					<h3 class="text-base font-semibold text-zinc-100">Remote (your favorite AI)</h3>
 				</div>
+				<p>
+					Download the interview instructions and paste them into ChatGPT, Claude, Gemini, or another AI. That AI
+					interviews you and writes the prompt. Save its final prompt as a file, then bring it back here for step 2.
+				</p>
+				<div class="flex flex-wrap gap-2">
+					<a class="btn-secondary" href="/api/meta-prompt?format=md" download>Download .md</a>
+					<a class="btn-secondary" href="/api/meta-prompt?format=txt" download>Download .txt</a>
+				</div>
+				<p class="text-xs text-zinc-500">Save the prompt it gives you as a .md or .txt file, then go to step 2.</p>
 			</div>
 		</div>
+
+		<p class="text-sm text-zinc-300">
+			Either way, you should leave this step holding one thing: <strong class="text-zinc-100">your prompt file.</strong>
+		</p>
 
 		{#if sessionPrompt}
 			<div class="rounded-lg border-2 border-emerald-700 bg-bg-elevated">
@@ -165,8 +238,9 @@
 		{/if}
 	</section>
 {:else if stage === 'questions'}
-	<section class="mt-6 max-w-2xl">
-		<p class="text-sm text-zinc-400">
+	<section class="mt-2 max-w-2xl">
+		<h2 class="text-lg font-semibold text-zinc-100">This step: Generate Questions</h2>
+		<p class="mt-2 text-sm text-zinc-400">
 			The teacher model (<span class="font-mono text-zinc-300">{data.teacher}</span>) follows your PROMPT and writes
 			practice questions with worked answers, one per line in a .jsonl file.
 		</p>
@@ -189,21 +263,54 @@
 				{/if}
 			</fieldset>
 			<div>
+				<label class="label" for="docs">Source documents <span class="font-normal text-zinc-500">(optional)</span></label>
+				<input
+					id="docs"
+					class="input"
+					type="file"
+					name="docs"
+					multiple
+					accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+					onchange={inspectDocs}
+					aria-describedby="docs-help"
+				/>
+				<p id="docs-help" class="mt-1.5 text-xs leading-5 text-zinc-500">
+					PDF, .txt or .md files, such as a game manual, rules, or official NASA documents. The Teacher reads a
+					section of these while writing each batch of questions, so the questions are based on the real facts. The
+					Student never sees the documents: it has to learn the facts from the questions. Leave empty to generate
+					from your PROMPT alone.
+				</p>
+				{#if docInfo}
+					<p class="mt-1 text-xs {docInfo.bad.length ? 'text-red-400' : 'text-emerald-400'}">
+						{#if docInfo.bad.length}
+							Not a PDF, .txt or .md file: {docInfo.bad.join(', ')}
+						{:else}
+							{docInfo.n} document{docInfo.n === 1 ? '' : 's'} ({docInfo.mb.toFixed(1)} MB). Grounded jobs take a little
+							longer per question.
+						{/if}
+					</p>
+				{/if}
+			</div>
+			<div>
 				<label class="label" for="count">How many questions?</label>
 				<input id="count" class="input w-40" type="number" name="count" min="1" max={data.maxCount} bind:value={count} required />
-				<p class="mt-1.5 text-xs text-zinc-500">
-					Estimated time: {estimate} (about 2–2.5 seconds per question). You can close this page; the job runs in
-					the queue and you can pause it.
+				<p class="mt-1.5 text-xs text-zinc-500" id="generate-estimate">
+					Estimated time: <span class="text-zinc-300">{estimate}</span> (about {perItemLo.toFixed(1)}–{perItemHi.toFixed(1)} seconds per
+					question{docInfo && !docInfo.bad.length ? ' with source documents' : ''}). That includes the answer check: the Teacher
+					re-solves every question on its own and replaces any whose answers disagree. You can close this page; the job runs
+					in the queue and you can pause it.
 				</p>
 			</div>
-			<button class="btn-primary" type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit'}</button>
+			<button class="btn-primary" type="submit" disabled={submitting || Boolean(docInfo?.bad.length)}>{submitting ? 'Submitting…' : 'Submit'}</button>
 		</form>
 	</section>
 {:else}
-	<section class="mt-6 max-w-2xl">
-		<p class="text-sm text-zinc-400">
+	<section class="mt-2 max-w-2xl">
+		<h2 class="text-lg font-semibold text-zinc-100">This step: Train</h2>
+		<p class="mt-2 text-sm text-zinc-400">
 			Moonshine sets aside 20% of your questions for testing, trains the student on the rest, compares the student's
-			answers before and after training, and then creates a new Ollama model named after you.
+			answers before and after training, and then creates a new Ollama model named after you. While it trains it saves a
+			checkpoint about every tenth of the way, scores each one on held-out questions, and keeps the best one.
 		</p>
 		<form method="POST" action="?/train" enctype="multipart/form-data" class="card mt-4 space-y-5 p-5" use:enhance={submitEnhance}>
 			<div>
@@ -235,14 +342,19 @@
 				New model name: <span class="font-mono text-zinc-300">{student}-{slug}-{ymd}</span>
 			</p>
 			<details class="rounded-md border border-border-subtle px-3 py-2">
-				<summary class="cursor-pointer text-sm text-zinc-300">Advanced (leave blank for automatic)</summary>
-				<div class="mt-3 grid grid-cols-2 gap-3">
-					<label class="text-xs text-zinc-400">Training steps<input class="input mt-1" type="number" name="ITERS" min="1" placeholder="auto (2 passes)" /></label>
-					<label class="text-xs text-zinc-400">Passes over the data (epochs)<input class="input mt-1" type="number" name="EPOCHS" min="0.1" step="0.1" placeholder="2" /></label>
-					<label class="text-xs text-zinc-400">Learning rate<input class="input mt-1" type="number" name="LEARNING_RATE" min="0" step="any" placeholder="0.0001" /></label>
-					<label class="text-xs text-zinc-400">Examples per step (batch size)<input class="input mt-1" type="number" name="BATCH_SIZE" min="1" placeholder="4" /></label>
-					<label class="text-xs text-zinc-400">Layers to train<input class="input mt-1" type="number" name="NUM_LAYERS" min="1" placeholder="16" /></label>
-					<label class="text-xs text-zinc-400">Max tokens per example<input class="input mt-1" type="number" name="MAX_SEQ_LENGTH" min="128" placeholder="2048" /></label>
+				<summary class="cursor-pointer text-sm text-zinc-300">Trainer <span class="text-zinc-500">(advanced settings; leave blank for automatic)</span></summary>
+				<p class="mt-3 text-xs text-zinc-400">
+					These settings control how the Trainer teaches your Student model. Every box can be left blank; blank means
+					Moonshine uses the default shown.
+				</p>
+				<div class="mt-3 grid gap-x-5 gap-y-4 sm:grid-cols-2">
+					{#each TRAINER_FIELDS as f (f.name)}
+						<div>
+							<label class="text-xs font-medium text-zinc-300" for="adv-{f.name}">{f.label}</label>
+							<input id="adv-{f.name}" class="input mt-1" type="number" name={f.name} min={f.min} step={f.step} placeholder={f.placeholder} aria-describedby="adv-{f.name}-help" />
+							<p id="adv-{f.name}-help" class="mt-1.5 text-xs leading-5 text-zinc-500">{f.help}</p>
+						</div>
+					{/each}
 				</div>
 			</details>
 			<button class="btn-primary" type="submit" disabled={submitting || !student || (pairInfo !== null && pairInfo.valid < 10)}>
