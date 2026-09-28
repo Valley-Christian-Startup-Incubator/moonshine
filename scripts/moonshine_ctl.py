@@ -6,16 +6,22 @@
   moonshine_ctl.py pause|resume|cancel JOB_ID
   moonshine_ctl.py list
   moonshine_ctl.py users [add NAME | delete NAME]
+
+Deleting a name also scrubs ~/.distill/logs/*.log the same way the admin web
+delete does (web/src/lib/server/log-scrub.ts).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import secrets
 import shutil
 import string
+import subprocess
 import sys
+import time
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -64,10 +70,146 @@ def users_load():
     return mc.read_json(mc.USERS_FILE, []) or []
 
 
+# ---------------------------------------------------------------- log scrub
+# Mirrors web/src/lib/server/log-scrub.ts: every *.log directly in
+# ~/.distill/logs loses the lines that mention the deleted name (display form or
+# the lowercase-hyphen slug used in Ollama tags; case-insensitive, on
+# letter/digit boundaries, spaces/hyphens/underscores interchangeable), one of
+# that person's job IDs (exact, alnum boundaries) or one of their Ollama model
+# tags (exact). Files are rewritten in place (same inode) because launchd holds
+# them open O_APPEND for the queue runner and the web app.
+LOGS_DIR = os.path.join(mc.DISTILL_HOME, "logs")
+MAX_LOG_BYTES = 256 * 1024 * 1024
+RESCRUB_DELAYS = (10, 60, 300)
+
+
+def name_slugs(name):
+    full = re.sub(r"^-+|-+$", "", re.sub(r"[^a-z0-9]+", "-", name.lower()))
+    short = re.sub(r"^-+|-+$", "", full[:24])
+    return list(dict.fromkeys(s for s in (full, short) if len(s) >= 2))
+
+
+def build_scrub_matcher(name, job_ids=(), tags=()):
+    res = []
+    name_parts = []
+    for w in dict.fromkeys(x.lower() for x in [name.strip(), *name_slugs(name)] if x):
+        body = r"[\s_-]+".join(re.escape(p) for p in re.split(r"[\s_-]+", w) if p)
+        if body:
+            name_parts.append(rf"(?<![^\W_]){body}(?![^\W_])")
+    if name_parts:
+        res.append(re.compile("|".join(name_parts), re.IGNORECASE))
+    exact = [rf"(?<![A-Za-z0-9]){re.escape(j)}(?![A-Za-z0-9])" for j in job_ids if j]
+    exact += [re.escape(t) for t in tags if t]
+    if exact:
+        res.append(re.compile("|".join(exact)))
+    if not res:
+        return None
+    return lambda line: any(r.search(line) for r in res)
+
+
+def scrub_file_in_place(path, match):
+    try:
+        size = os.stat(path).st_size
+    except OSError:
+        return 0
+    if not os.path.isfile(path) or size == 0 or size > MAX_LOG_BYTES:
+        return 0
+
+    def filt(data):
+        lines = data.decode("utf-8", errors="surrogateescape").splitlines(keepends=True)
+        kept = [ln for ln in lines if not match(ln)]
+        return "".join(kept).encode("utf-8", errors="surrogateescape"), len(lines) - len(kept)
+
+    with open(path, "r+b") as f:
+        out, removed = filt(f.read(size))
+        if removed == 0:
+            return 0
+        # pick up anything appended while filtering, then rewrite quickly
+        f.seek(size)
+        extra = f.read()
+        if extra:
+            out2, r2 = filt(extra)
+            out += out2
+            removed += r2
+        f.seek(0)
+        f.truncate(0)
+        f.write(out)
+        f.flush()
+        os.fsync(f.fileno())
+    return removed
+
+
+def scrub_logs(name, job_ids=(), tags=()):
+    match = build_scrub_matcher(name, job_ids, tags)
+    result = {"files": 0, "linesRemoved": 0, "perFile": {}}
+    if not match:
+        return result
+    try:
+        files = sorted(os.path.join(LOGS_DIR, f) for f in os.listdir(LOGS_DIR) if f.endswith(".log"))
+    except OSError:
+        files = []
+    for path in files:
+        try:
+            n = scrub_file_in_place(path, match)
+        except OSError:
+            continue  # never fail the delete over a log we cannot edit
+        result["files"] += 1
+        if n:
+            result["linesRemoved"] += n
+            result["perFile"][os.path.basename(path)] = n
+    return result
+
+
+def wait_for_purges(job_ids, timeout=30.0):
+    """The queue runner consumes purge requests asynchronously; wait for them."""
+    def pending():
+        return any(os.path.exists(os.path.join(mc.CONTROL_DIR, f"{j}.json"))
+                   or os.path.exists(os.path.join(mc.JOBS_DIR, j)) for j in job_ids)
+    deadline = time.time() + timeout
+    while job_ids and pending() and time.time() < deadline:
+        time.sleep(0.5)
+    if job_ids:
+        time.sleep(0.75)
+    return not pending()
+
+
+def spawn_rescrub(name, job_ids, tags):
+    """Detached background re-scrubs (10 s, 60 s, 5 min) to catch late runner lines.
+    Terms go over stdin so the name never shows up in the process list."""
+    try:
+        p = subprocess.Popen([sys.executable, os.path.abspath(__file__), "_rescrub"], stdin=subprocess.PIPE,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                             close_fds=True)
+        p.stdin.write(json.dumps({"name": name, "jobIds": list(job_ids), "tags": list(tags)}).encode())
+        p.stdin.close()
+    except OSError:
+        pass
+
+
+def rescrub_worker():
+    terms = json.loads(sys.stdin.read() or "{}")
+    if not terms.get("name"):
+        return
+    last = 0
+    for d in RESCRUB_DELAYS:
+        time.sleep(d - last)
+        last = d
+        scrub_logs(terms["name"], terms.get("jobIds", []), terms.get("tags", []))
+
+
 def delete_user(name):
-    users = [u for u in users_load() if u["name"] != name]
-    mc.write_json_atomic(mc.USERS_FILE, users)
+    users = users_load()
+    match = next((u for u in users if u["name"].lower() == name.lower()), None)
+    if match:
+        name = match["name"]
+    mc.write_json_atomic(mc.USERS_FILE, [u for u in users if u["name"] != name])
+    job_ids = []
+    for jid in os.listdir(mc.JOBS_DIR):
+        meta = mc.read_json(os.path.join(mc.JOBS_DIR, jid, "meta.json"))
+        if meta and meta.get("version") == 2 and meta.get("ownerName") == name:
+            job_ids.append(jid)
     reg = mc.read_json(mc.OLLAMA_REGISTRY, []) or []
+    tags = [r["tag"] for r in reg if r.get("tag") and (r.get("owner") == name or r.get("jobId") in job_ids)]
     keep = []
     for r in reg:
         if r.get("owner") == name:
@@ -81,16 +223,21 @@ def delete_user(name):
         else:
             keep.append(r)
     mc.write_json_atomic(mc.OLLAMA_REGISTRY, keep)
-    n = 0
-    for jid in os.listdir(mc.JOBS_DIR):
-        meta = mc.read_json(os.path.join(mc.JOBS_DIR, jid, "meta.json"))
-        if meta and meta.get("version") == 2 and meta.get("ownerName") == name:
-            control(jid, "purge")
-            n += 1
-    print(f"user {name!r} removed; {n} job(s) sent to purge")
+    for jid in job_ids:
+        control(jid, "purge")
+    print(f"user {name!r} removed; {len(job_ids)} job(s) sent to purge")
+    if not wait_for_purges(job_ids):
+        print("note: queue runner has not finished purging yet; background re-scrub will catch its lines")
+    res = scrub_logs(name, job_ids, tags)
+    spawn_rescrub(name, job_ids, tags)
+    print(f"log scrub: {res['linesRemoved']} line(s) removed {json.dumps(res['perFile'])} "
+          f"(re-scrub at {', '.join(f'{d}s' for d in RESCRUB_DELAYS)})")
 
 
 def main():
+    if sys.argv[1:] == ["_rescrub"]:
+        rescrub_worker()
+        return
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("submit-generate")
