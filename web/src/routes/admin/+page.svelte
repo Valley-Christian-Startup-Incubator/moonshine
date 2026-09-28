@@ -38,7 +38,7 @@
 			const d = await res.json();
 			if (!res.ok || !d.ok) throw new Error(d.error ?? 'Delete failed');
 			pushToast(
-				`Deleted ${d.name}: ${d.jobsPurged} job(s), ${d.ollamaModelsDeleted.length} Ollama model(s).` +
+				`Deleted ${d.name}: ${d.jobsPurged} job(s), ${d.ollamaModelsDeleted.length} Ollama model(s), ${d.logScrub?.linesRemoved ?? 0} log line(s).` +
 					(d.ollamaModelsFailed.length ? ` Could not delete: ${d.ollamaModelsFailed.join(', ')}` : '')
 			);
 			dialog?.close();
@@ -67,7 +67,7 @@
 		<h1 class="text-xl font-semibold text-zinc-100">Admin: names</h1>
 		<form method="POST" action="?/logout" use:enhance><button class="btn-secondary">Leave admin</button></form>
 	</div>
-	<p class="mt-2 text-sm text-zinc-400">Deleting a name also deletes everything that person made: jobs, result files and their Ollama models.</p>
+	<p class="mt-2 text-sm text-zinc-400">Deleting a name also deletes everything that person made: jobs, result files and their Ollama models, and removes log lines that mention them.</p>
 	<div class="card mt-4 divide-y divide-border-subtle">
 		{#each data.users as u (u.name)}
 			<div class="flex items-center justify-between px-4 py-3">

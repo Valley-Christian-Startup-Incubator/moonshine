@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { RESULTS_DIR, USERS_FILE, readJsonFile, writeJsonAtomic } from './moonshine-paths';
 import { listJobs, purgeJob } from './queue';
 import { deleteRegisteredModel, listRegisteredModels } from './ollama';
+import { scrubLogsAfterPurge, type ScrubResult } from './log-scrub';
 
 /**
  * Names replace teams. After the shared-password login the person picks their
@@ -91,6 +92,8 @@ export interface DeleteUserResult {
 	runningOrQueuedCancelled: number;
 	ollamaModelsDeleted: string[];
 	ollamaModelsFailed: string[];
+	/** Log lines removed that mentioned the name, its slug, its job IDs or model tags. */
+	logScrub: ScrubResult;
 }
 
 export interface DeleteUserPreview {
@@ -123,7 +126,8 @@ export async function previewDeleteUser(name: string): Promise<DeleteUserPreview
  * Admin only. Deletes the name, cancels that person's running/queued/paused
  * jobs, deletes all their job + result files (the queue runner stops a running
  * job first, then deletes), and deletes the Ollama models Moonshine registered
- * for them. Base models are never touched.
+ * for them. Base models are never touched. Finally scrubs the name, its slug,
+ * its job IDs and model tags from ~/.distill/logs/*.log (in place).
  */
 export async function deleteUser(name: string): Promise<DeleteUserResult> {
 	const user = await findUser(name);
@@ -137,15 +141,23 @@ export async function deleteUser(name: string): Promise<DeleteUserResult> {
 	for (const j of jobs) await purgeJob(j.id);
 	const deleted: string[] = [];
 	const failed: string[] = [];
-	for (const m of await listRegisteredModels(user.name)) {
+	const models = await listRegisteredModels(user.name);
+	for (const m of models) {
 		if (await deleteRegisteredModel(m.tag).catch(() => false)) deleted.push(m.tag);
 		else failed.push(m.tag);
 	}
+	// Privacy: remove every log line mentioning the name, its slug, its jobs or its models.
+	const logScrub = await scrubLogsAfterPurge({
+		name: user.name,
+		jobIds: jobs.map((j) => j.id),
+		modelTags: models.map((m) => m.tag)
+	}).catch(() => ({ files: 0, linesRemoved: 0, perFile: {} }));
 	return {
 		name: user.name,
 		jobsPurged: jobs.length,
 		runningOrQueuedCancelled: jobs.filter((j) => ['queued', 'running', 'paused'].includes(j.status)).length,
 		ollamaModelsDeleted: deleted,
-		ollamaModelsFailed: failed
+		ollamaModelsFailed: failed,
+		logScrub
 	};
 }
