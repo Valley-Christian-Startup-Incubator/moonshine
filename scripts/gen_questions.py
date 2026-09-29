@@ -24,6 +24,22 @@ the section). Matches are kept; mismatches are dropped, logged to rejected.jsonl
 by generating more, up to about 3x the planned number of batches (then the job finishes with a warning).
 Counters live in check_state.json (resumable) and progress.json extra.check.
 
+Refuse-and-refer items (the completion's final answer says the information is not available and/or sends the user
+to a counselor, office or other source): the re-solve often answers "NOT IN SOURCE" for these, which is exactly what
+a correct refusal expects. Instead of dropping them, a refusal judge reads the section and KEEPS the item only when
+the section really does not contain the asked-for information (or itself sends people elsewhere) and every fact the
+answer states is supported; a refusal of a question the section does answer, or one that adds unsupported facts, is
+dropped (reasons wrong_refusal / unsupported_refusal). Factual answers that the re-solve could not find
+("NOT IN SOURCE") get one support judgement against the section before being dropped. Kept refusals are counted as
+their own stat (check.json "refusals_kept").
+
+Document weights (grounded jobs): each uploaded document has a role, "main", "supporting" (default) or
+"background". Sections of main documents are chosen DOC_WEIGHTS["main"] times as often as supporting ones and
+background sections DOC_WEIGHTS["background"] times as often, with a smooth weighted round-robin so the choice is
+spread out. Batches from supporting and background documents carry a relevance rule (only write items related to
+the PROMPT's program). sources.jsonl records each question's main document ("doc"); per-document counts are in
+progress extra.doc_counts and check.json.
+
 Variety: near-exact repeats (word-shingle Jaccard >= NEAR_EXACT_J against earlier items) are dropped and replaced
 during generation; at the end a near-duplicate scan (Jaccard >= NEAR_DUP_J) writes variety.json and
 progress.json extra.variety (the job page warns above 5%).
@@ -67,6 +83,8 @@ GROUNDING_RULES = """=== SOURCE RULES (this batch is grounded in the SOURCE PASS
 - Put the substance in the completion naturally: state the actual fact, number or rule (cite the rule/section number when the passage gives one) inside the worked reasoning and the final answer. In completions too, never say "the passage", "the text" or "the excerpt"; name the rule, section or document instead (for example "R301 says" or "the game manual says").
 - Cover different parts of the passage; do not write several items about the same sentence. Ask about exact numbers in more than one phrasing when the passage has them.
 - Still follow the PROMPT above for item types, mix, difficulty, notation and the completion format.
+- Tables in the passage are markdown rows under a header row; every row is one complete record (read it across).
+- If the PROMPT asks for refuse-and-refer items, write their final answer so it plainly says the information is not available here (for example "I don't have that information") and where to go instead; only write them for things this passage really does not state.
 - If part of the passage is boilerplate (contents, legal notices, credits), skip that part."""
 
 PASSAGE_REF = re.compile(r"\b(the|this|that|above|provided|given)\s+(passage|excerpt|source text|source passage|text above|section above|document above)\b"
@@ -81,7 +99,7 @@ CHECK_SYSTEM = """You are checking a practice question by solving it yourself fr
 - Stop immediately after the Final Answer line: no re-checking, notes or summary after it."""
 
 CHECK_GROUNDED = """
-- The question was written from the SOURCE PASSAGE below (an official document). Answer from the passage. If the passage does not contain what is needed to answer, write "Final Answer: NOT IN SOURCE".
+- The question was written from the SOURCE PASSAGE below (an official document). Answer from the passage. Tables are written as markdown rows ("| a | b | c |"): read each row across, under the header row. If the passage does not contain what is needed to answer, write "Final Answer: NOT IN SOURCE".
 
 === SOURCE PASSAGE ===
 {passage}
@@ -98,8 +116,53 @@ A SOURCE PASSAGE (the official document the question was written from) is includ
 {passage}
 === END SOURCE PASSAGE ==="""
 
+REFUSAL_JUDGE_SYSTEM = """You check an answer that declines to answer or sends the user somewhere else (a counselor, an office,
+a college, a catalog, a website). You get the QUESTION, the ANSWER and the SOURCE PASSAGE the question was written from.
+Reply with exactly one word:
+KEEP if BOTH are true: (1) the passage does not contain the specific information the question asks for, OR the passage
+itself tells people to go elsewhere for it; and (2) every concrete fact the answer states (numbers, dates, names, rules)
+appears in the passage. General referrals (ask your counselor, contact the school office or the college, check the
+catalog) and contact details do not need support.
+WRONG if the passage clearly contains the answer to the question, so refusing is wrong.
+UNSUPPORTED if the answer states a concrete fact that the passage does not support or contradicts.
+
+=== SOURCE PASSAGE ===
+{passage}
+=== END SOURCE PASSAGE ==="""
+
+SUPPORT_JUDGE_SYSTEM = """You check whether an answer is supported by a source passage. You get the QUESTION, the ANSWER and the
+SOURCE PASSAGE (tables are written as markdown rows: read each row across). Reply with exactly one word:
+SUPPORTED if the passage states the facts in the answer (same values, names and rules; wording may differ),
+UNSUPPORTED otherwise.
+
+=== SOURCE PASSAGE ===
+{passage}
+=== END SOURCE PASSAGE ==="""
+
+# The final answer declines ("I don't have that information", "the date isn't listed") ...
+DECLINE_RE = re.compile(
+    r"\b(?:i\s+(?:do\s+not|don'?t|cannot|can'?t)\s+(?:have|find|see|know|say|tell|confirm|guarantee|give|provide|calculate)"
+    r"|(?:is|are)\s*(?:not|n'?t)\s+(?:listed|included|stated|specified|given|provided|covered|mentioned|documented)"
+    r"|(?:not|isn'?t|aren'?t)\s+(?:in|on)\s+(?:the|this|these|my|our)\s+(?:[\w\-]+\s+){0,4}(?:information|documents?|list|page|materials?|sources?|catalog)"
+    r"|no\s+information|not\s+sure|unable\s+to)", re.I)
+# ... or refers the user elsewhere ("ask your counselor", "contact the Dual Credit office").
+REFER_RE = re.compile(
+    r"\b(?:ask|contact|check\s+with|talk\s+(?:to|with)|reach\s+out\s+to|email|consult|speak\s+(?:to|with))\s+(?:your|the|a|an)?\s*"
+    r"(?:\w+\s+){0,3}(?:counselor|office|coordinator|registrar|college|university|school|teacher|advisor|staff|department)"
+    r"|\brefer(?:red)?\s+(?:you|them)\s+to", re.I)
+
+
+ALL_DOCS_MAX_WORDS = 9000  # documents up to this size are shown whole to the support and refusal judges
+
+
+def is_refusal(ans: str | None) -> bool:
+    """Declines and/or refers the user elsewhere (routing for the refusal judge)."""
+    return bool(ans and (DECLINE_RE.search(ans) or REFER_RE.search(ans)))
+
+
 CHECK_MAX_TOKENS = 320      # bounded re-solve (think off); one retry with RETRY_TOKENS if no final answer
 CHECK_RETRY_TOKENS = 700
+DOC_WEIGHTS = {"main": 3.0, "supporting": 1.0, "background": 0.3}  # how often a section is chosen, per role
 ATTEMPT_FACTOR = 3          # cap on generation calls: about 3x the planned batch count
 NEAR_EXACT_J = 0.9          # dropped and replaced during generation
 NEAR_DUP_J = 0.8            # counted in the final variety scan
@@ -225,14 +288,18 @@ def _strip_letter(ans: str | None) -> str:
 class AnswerChecker:
     """Re-solves items with the Teacher and compares final answers. Stats persist in check_state.json."""
 
-    def __init__(self, teacher: str, out_dir: str):
+    def __init__(self, teacher: str, out_dir: str, all_docs: str | None = None):
         self.teacher = teacher
+        # every section of the job's documents, when they are short enough to show at once (ALL_DOCS_MAX_WORDS):
+        # facts the Teacher took from another section (often via the PROMPT) are then checked against the documents
+        # instead of being dropped as not_in_source, and a refusal is wrong if ANY document answers it.
+        self.all_docs = all_docs
         self.state_path = os.path.join(out_dir, "check_state.json")
         self.rej_path = os.path.join(out_dir, "rejected.jsonl")
         st = mc.read_json(self.state_path, {}) or {}
         self.s = {"checked": 0, "kept": 0, "dropped": 0, "reasons": {}, "methods": {}, "judge_calls": 0,
                   "retries": 0, "check_sec": 0.0, "gen_sec": 0.0, "attempts": 0, "cap_hit": False,
-                  "near_exact_dropped": 0, **st}
+                  "near_exact_dropped": 0, "refusals_checked": 0, "refusals_kept": 0, "support_kept": 0, **st}
 
     def save(self):
         mc.write_json_atomic(self.state_path, self.s)
@@ -269,14 +336,44 @@ class AnswerChecker:
         out = self._chat(system, user, 8, 16384 if passage else 4096).strip().upper()
         return out.startswith("SAME")
 
+    def _verdict(self, system: str, prompt: str, answer: str, passage: str, words_: tuple[str, ...]) -> str:
+        self.s["judge_calls"] += 1
+        user = f"QUESTION:\n{prompt[:3000]}\n\nANSWER: {answer[:1200]}\n\nReply with one word: {' or '.join(words_)}."
+        ctx = 16384 if len(passage) < 30000 else 32768
+        out = self._chat(system.format(passage=passage), user, 8, ctx).strip().upper()
+        return next((w for w in words_ if out.startswith(w)), "")
+
+    def refusal_verdict(self, prompt: str, answer: str, passage: str) -> str:
+        return self._verdict(REFUSAL_JUDGE_SYSTEM, prompt, answer, passage, ("KEEP", "WRONG", "UNSUPPORTED"))
+
+    def supported(self, prompt: str, answer: str, passage: str) -> bool:
+        return self._verdict(SUPPORT_JUDGE_SYSTEM, prompt, answer, passage, ("SUPPORTED", "UNSUPPORTED")) == "SUPPORTED"
+
     def compare(self, item: dict, key: str | None, chk: str | None, passage: str | None) -> tuple[bool, str, str]:
         """(keep, method, reason)."""
+        if is_refusal(key) and passage and (chk is None or "NOT IN SOURCE" in chk.upper() or chk.upper().startswith("INVALID")):
+            # refuse-and-refer answer and the re-solve found nothing either: that agrees with a correct refusal.
+            # Keep it only if the passage really lacks the information (or itself sends people elsewhere) and the
+            # answer adds no unsupported facts. (If the re-solve found a real answer, the normal comparison below
+            # decides, so a refusal of something the passage answers is dropped as judge_different.)
+            v = self.refusal_verdict(item["prompt"], key, self.all_docs or passage)
+            if v == "KEEP":
+                return True, "refusal", ""
+            if v == "UNSUPPORTED" and not DECLINE_RE.search(key) and self.supported(item["prompt"], key, self.all_docs or passage):
+                # a factual answer that ends with "contact ..." (troubleshooting), not a refusal: keep it if supported
+                return True, "support_docs" if self.all_docs else "support", ""
+            return False, "refusal", ("wrong_refusal" if v == "WRONG" else "unsupported_refusal")
         if chk is None:
             return False, "none", "no_answer"
         cu = chk.upper()
         if cu.startswith("INVALID"):
             return False, "none", "invalid_question"
         if "NOT IN SOURCE" in cu:
+            # the short re-solve could not find it; give a factual answer one support check against the passage
+            if key is not None and passage and self.supported(item["prompt"], key, passage):
+                return True, "support", ""
+            if key is not None and self.all_docs and self.supported(item["prompt"], key, self.all_docs):
+                return True, "support_docs", ""  # stated in another section of the uploaded documents
             return False, "none", "not_in_source"
         if key is None:
             return False, "none", "no_final_answer_in_completion"
@@ -310,8 +407,16 @@ class AnswerChecker:
             ok, method, reason = self.compare(it, key, chk, passage)
             self.s["checked"] += 1
             self.s["methods"][method] = self.s["methods"].get(method, 0) + 1
+            # refuse-and-refer stat: answers that decline, or referrals confirmed by the refusal judge
+            refusal_item = bool(key and DECLINE_RE.search(key)) or method == "refusal"
+            if refusal_item:
+                self.s["refusals_checked"] = self.s.get("refusals_checked", 0) + 1
             if ok:
                 kept.append(it)
+                if refusal_item:
+                    self.s["refusals_kept"] = self.s.get("refusals_kept", 0) + 1
+                if method in ("support", "support_docs"):
+                    self.s["support_kept"] = self.s.get("support_kept", 0) + 1
             else:
                 r0 = reason.split(" ")[0]
                 self.s["reasons"][r0] = self.s["reasons"].get(r0, 0) + 1
@@ -338,7 +443,9 @@ class AnswerChecker:
                 "reasons": d["reasons"], "methods": d["methods"], "judge_calls": d["judge_calls"],
                 "check_sec": round(d["check_sec"], 1), "gen_sec": round(d["gen_sec"], 1),
                 "attempts": d["attempts"], "max_attempts": d.get("max_attempts"), "cap_hit": d["cap_hit"],
-                "near_exact_dropped": d.get("near_exact_dropped", 0)}
+                "near_exact_dropped": d.get("near_exact_dropped", 0),
+                "refusals_checked": d.get("refusals_checked", 0), "refusals_kept": d.get("refusals_kept", 0),
+                "support_kept": d.get("support_kept", 0)}
 
 
 # ---------------------------------------------------------------- variety (near-duplicates)
@@ -405,6 +512,31 @@ def variety_stats(prompts: list[str], threshold: float = NEAR_DUP_J) -> dict:
 
 
 
+def doc_role(role) -> str:
+    r = str(role or "").strip().lower()
+    return r if r in DOC_WEIGHTS else "supporting"
+
+
+def chunk_schedule(chunks: list[dict], roles: dict[str, str], length: int = 20000) -> list[int]:
+    """Section visiting order with each section's share proportional to its document's role weight.
+
+    Smooth weighted round-robin (the nginx algorithm) over the sections, taken in the low-discrepancy chunk_order so
+    that sections of the same document are spread out; deterministic, so a resumed job continues the same order.
+    """
+    base = chunk_order(len(chunks))
+    w = [DOC_WEIGHTS[doc_role(roles.get(chunks[i]["doc"]))] for i in base]
+    total = sum(w) or 1.0
+    cur = [0.0] * len(base)
+    out = []
+    for _ in range(length):
+        for k in range(len(base)):
+            cur[k] += w[k]
+        k = max(range(len(base)), key=lambda j: cur[j])
+        cur[k] -= total
+        out.append(base[k])
+    return out
+
+
 def chunk_order(n: int) -> list[int]:
     """Low-discrepancy visiting order: any prefix is spread across the whole document."""
     phi = 0.6180339887498949
@@ -426,7 +558,10 @@ def load_sources(src_path: str, items: list[dict]) -> list[dict]:
     for i, it in enumerate(items):
         h = ds.prompt_hash(it["prompt"])
         o = by_hash.get(h) or {"chunks": [], "label": None}
-        out.append({"i": i, "hash": h, "chunks": o.get("chunks") or [], "label": o.get("label")})
+        row = {"i": i, "hash": h, "chunks": o.get("chunks") or [], "label": o.get("label")}
+        if o.get("doc"):
+            row["doc"] = o["doc"]
+        out.append(row)
     tmp = src_path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         for o in out:
@@ -558,12 +693,19 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
     sources = load_sources(src_path, items) if grounded else []
     state_path = os.path.join(out_dir, "gen_state.json")
     gstate = (mc.read_json(state_path, {}) or {}) if grounded else {}
-    order = chunk_order(len(chunks)) if grounded else []
-    if grounded and gstate.get("n_chunks") != len(chunks):
-        gstate = {"cursor": 0, "n_chunks": len(chunks)}
+    roles = {(d.get("name") or os.path.basename(d.get("file", ""))): doc_role(d.get("role")) for d in (docs or [])}
+    order = chunk_schedule(chunks, roles) if grounded else []
+    if grounded and (gstate.get("n_chunks") != len(chunks) or gstate.get("roles") != roles):
+        gstate = {"cursor": 0, "n_chunks": len(chunks), "roles": roles}
+    doc_counts: dict[str, int] = {}
+    for s_ in sources:
+        dn = s_.get("doc") or (chunks[s_["chunks"][0]]["doc"] if s_.get("chunks") and s_["chunks"][0] < len(chunks) else None)
+        if dn:
+            doc_counts[dn] = doc_counts.get(dn, 0) + 1
     # items per section visit: enough passes to reach the count, scaled by section length below
     per_visit = min(batch_size, max(3, -(-count // max(1, len(chunks))))) if grounded else batch_size
-    checker = AnswerChecker(teacher, out_dir)
+    all_docs = ds.all_documents_text(chunks, ALL_DOCS_MAX_WORDS) if grounded else None
+    checker = AnswerChecker(teacher, out_dir, all_docs)
     if os.path.exists(checker.rej_path):  # never re-check a question the check already dropped
         with open(checker.rej_path, encoding="utf-8", errors="replace") as f:
             for line in f:
@@ -586,7 +728,8 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
         prog.start_phase("generate", count, done, "items", "Generating and checking questions")
         prog.set_extra(teacher=teacher, check=checker.summary(count, done),
                        **({"grounded": True, "chunks": len(chunks),
-                           "documents": sorted({c["doc"] for c in chunks})} if grounded else {}))
+                           "documents": sorted({c["doc"] for c in chunks}), "doc_roles": roles,
+                           "doc_counts": doc_counts} if grounded else {}))
     # near-exact repeat detection against everything kept so far
     index = ShingleIndex()
     stems = set()
@@ -612,8 +755,13 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
         if grounded:
             cur = int(gstate.get("cursor", 0))
             visit = [chunks[order[cur % len(order)]]]
-            if visit[0]["words"] < 600 and len(order) > 1:
-                visit.append(chunks[order[(cur + 1) % len(order)]])
+            if visit[0]["words"] < 600 and len(chunks) > 1:
+                # short section: add the next scheduled section that is a different one
+                for k in range(1, len(order)):
+                    c2 = chunks[order[(cur + k) % len(order)]]
+                    if c2["id"] != visit[0]["id"]:
+                        visit.append(c2)
+                        break
             vw = sum(c["words"] for c in visit)
             n = min(count - done, batch_size, max(2, round(per_visit * vw / ds.TARGET_WORDS)))
         else:
@@ -642,6 +790,20 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
             passage = "\n\n".join(f"[{c['label']}]\n{c['text']}" for c in visit)
             user_msg += "=== SOURCE PASSAGE ===\n" + passage + "\n=== END SOURCE PASSAGE ===\n\n"
             instr += "\n" + GROUNDING_RULES
+            extra = []
+            for c in visit:
+                r = roles.get(c["doc"], "supporting")
+                if r == "background":
+                    extra.append(f"- [{c['label']}] is BACKGROUND material. Use it only for facts that relate to the PROMPT's "
+                                 f"program and its users; skip unrelated facts (statistics, other programs, lists that do not "
+                                 f"matter to them).")
+                elif r == "supporting" and any(roles.get(x["doc"]) == "main" for x in visit):
+                    extra.append(f"- [{c['label']}] is SUPPORTING material: use the facts in it that relate to the PROMPT's program.")
+            if len(visit) > 1:
+                extra.append(f"- This batch's own section is [{visit[0]['label']}]: build most items on it. The other section "
+                             f"is extra context (use it to connect facts, not as the main subject).")
+            if extra:
+                instr += "\n" + "\n".join(extra)
         user_msg += instr
         messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user_msg}]
         try:
@@ -722,7 +884,8 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
                     f.write(json.dumps(it, ensure_ascii=False) + "\n")
                     if grounded:
                         new_src.append({"i": done, "hash": ds.prompt_hash(it["prompt"]),
-                                        "chunks": [c["id"] for c in visit], "label": label})
+                                        "chunks": [c["id"] for c in visit], "label": label, "doc": visit[0]["doc"]})
+                        doc_counts[visit[0]["doc"]] = doc_counts.get(visit[0]["doc"], 0) + 1
                     done += 1
                     added += 1
                 f.flush()
@@ -732,7 +895,7 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
                     for o in new_src:
                         f.write(json.dumps(o, ensure_ascii=False) + "\n")
                 sources.extend(new_src)
-                gstate["cursor"] = int(gstate.get("cursor", 0)) + len(visit)
+                gstate["cursor"] = int(gstate.get("cursor", 0)) + 1  # a paired section keeps its own turn
                 gstate["visits"] = int(gstate.get("visits", 0)) + 1
                 mc.write_json_atomic(state_path, gstate)
             checker.save()
@@ -752,9 +915,14 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
         else:
             consecutive_bad = 0
         if prog:
+            if grounded:
+                prog.set_extra(doc_counts=doc_counts)
             prog.update(done, force=True, check=checker.summary(count, done),
                         **{k: (round(v, 1) if isinstance(v, float) else v) for k, v in stats.items()})
     summary = checker.summary(count, done)
+    if grounded:
+        summary["doc_counts"] = doc_counts
+        summary["doc_roles"] = roles
     if checker.s["cap_hit"] and done < count:
         warn = (f"Stopped at {done} of {count} questions: the answer check dropped {summary['dropped']} of "
                 f"{summary['checked']} items ({100 * (summary['drop_rate'] or 0):.0f}%) and the attempt cap "
@@ -772,7 +940,11 @@ def run(prompt_file: str, out_path: str, count: int, batch_size: int, job_id: st
     mc.write_json_atomic(os.path.join(out_dir, "check.json"), summary)
     mc.log(f"Answer check: {summary['checked']} checked, {summary['dropped']} dropped "
            f"({100 * (summary['drop_rate'] or 0):.1f}%), {summary['replaced']} replaced; reasons {summary['reasons']}; "
-           f"check time {summary['check_sec']:.0f}s, generation time {summary['gen_sec']:.0f}s")
+           f"refusals kept {summary['refusals_kept']} of {summary['refusals_checked']}, kept after support check "
+           f"{summary['support_kept']}; check time {summary['check_sec']:.0f}s, generation time {summary['gen_sec']:.0f}s")
+    if grounded:
+        mc.log("Questions per document: " + "; ".join(f"{k} ({roles.get(k, 'supporting')}): {v}"
+                                                        for k, v in sorted(doc_counts.items(), key=lambda x: -x[1])))
     if prog:
         prog.update(done, force=True, check=summary,
                     variety={k: v for k, v in variety.items() if k != "examples"} | {"examples": variety["examples"][:3]})

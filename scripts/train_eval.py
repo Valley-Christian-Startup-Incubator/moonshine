@@ -60,6 +60,7 @@ PHASE_LABELS = {
 }
 
 ADVICE_MAX_ITEMS = 40
+ADVICE_MAX_CHARS = 110000  # advice prompt incl. the whole documents must fit in a 32k-token context
 BIG_SET = 1000          # more training items than this: default 1 epoch instead of 2
 VAL_MAX_BATCHES = 25    # size of the fixed validation subset used during training (batches)
 ADVICE_SYSTEM = """You are an expert machine-learning coach helping a high-school student improve a small language model (the Student) that was fine-tuned on question/answer pairs written by a larger Teacher model. You are shown the evaluation summary and a sample of held-out questions the TRAINED Student got wrong, with the answer key (expected answer), the Student's answer and the grader's note.
@@ -72,7 +73,8 @@ Write a short, concrete analysis in Markdown with exactly these two sections:
 ## Next steps to raise the score
 3 to 5 numbered, specific actions (for example: which topics to generate more questions on and roughly how many, how to change the question-generation prompt, which answer-key items to fix or drop, training settings to change, uploading source documents). Tie each to a pattern or to the summary numbers.
 
-Rules: be specific to THIS data; no generic filler; under 350 words total; plain Markdown (headings, bullets, **bold**), no tables, no code blocks. If an answer key looks wrong, say so plainly."""
+Rules: be specific to THIS data; no generic filler; under 350 words total; plain Markdown (headings, bullets, **bold**), no tables, no code blocks. If an answer key looks wrong, say so plainly.
+When SOURCE DOCUMENTS are included, they are the whole official material: check facts against them before calling anything invented. Never call a fact a hallucination if the SOURCE DOCUMENTS state it; a SOURCE SECTION is only one part of the documents, so a fact missing from it may still be correct."""
 
 GRADER_SYSTEM = """You are a strict, fair grader of practice-question answers. You compare a STUDENT ANSWER with a REFERENCE ANSWER written by an expert.
 
@@ -90,6 +92,10 @@ Judge only against the reference answer and sound domain knowledge. Ignore style
 GROUNDED_GRADER_ADDENDUM = """
 
 This question was written from an official SOURCE PASSAGE, which is included below the question. Grade against the SOURCE PASSAGE: the student's final answer is correct only if it agrees with what the source says (exact numbers, limits, rule numbers and conditions matter). If the reference answer and the source disagree, trust the source. Do not reward facts that contradict the source, and do not penalize correct facts from the source that the reference left out."""
+
+ALL_DOCS_GRADER_ADDENDUM = """
+
+This question was written from official SOURCE DOCUMENTS, included in full (the section the question was written from is repeated after the student answer). Grade against the SOURCE DOCUMENTS: the student's final answer is correct only if it agrees with what the documents say (exact numbers, limits, names, codes and conditions matter). A fact is correct if ANY of the documents states it, even when it is not in the first section. If the reference answer and the documents disagree, trust the documents. Do not reward facts that contradict the documents, and do not penalize correct facts from the documents that the reference left out."""
 
 GRADE_SCHEMA = {
     "type": "object",
@@ -588,18 +594,60 @@ class Job:
         if ds is not None and self.p.get("GROUNDED_GRADING", "1") not in ("0", 0, "off", "false"):
             try:
                 passages, info = ds.lookup_sources([r["prompt"] for r in rows], exclude_job=self.id)
+                self._all_docs = info.get("all_docs") or [None] * len(rows)
                 if info["matched"]:
                     mc.log(f"Grounded grading: {info['matched']}/{info['total']} held-out questions matched to source "
                            f"document sections (jobs: {', '.join(info['jobs'])}); the teacher grades those against the source.")
                 else:
                     mc.log("Grounded grading: no held-out questions matched a source document; grading against the reference only.")
                 self.state["grounded_grading"] = {"matched": info["matched"], "total": info["total"],
-                                                  "jobs": list(info["jobs"])}
+                                                  "jobs": list(info["jobs"]),
+                                                  "all_docs_fallback": info.get("all_docs_matched", 0)}
             except Exception as e:  # noqa: BLE001
                 mc.log(f"Grounded grading lookup failed ({e}); grading against the reference only.")
                 passages = [None] * len(rows)
         self._grounding = passages
+        if len(getattr(self, "_all_docs", None) or []) != len(rows):
+            self._all_docs = [None] * len(rows)
         return passages
+
+    def all_docs(self, rows):
+        """Whole-document text per held-out item (for the grading fallback), aligned with grounding(rows)."""
+        self.grounding(rows)
+        return self._all_docs
+
+    def _grade_call(self, teacher, row, ans, passage, docs=None):
+        user, system, ctx = self.grade_message(row, ans, passage, docs)
+        for attempt in range(3):
+            try:
+                r = mc.teacher_chat(teacher, [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                                    temperature=0.0 if attempt == 0 else 0.3, num_predict=400, num_ctx=ctx,
+                                    fmt=GRADE_SCHEMA, timeout=600)
+                g = parse_json_obj(r["message"].get("content", ""))
+                return {"correct": bool(g["correct"]), "reasoning_score": max(1, min(5, int(g["reasoning_score"]))),
+                        "explanation": str(g.get("explanation", ""))[:400]}
+            except mc.StopRequested:
+                raise
+            except Exception as e:  # noqa: BLE001
+                mc.log(f"grade attempt {attempt + 1} failed: {e}")
+                time.sleep(3)
+        return None
+
+    def grade_item(self, teacher, row, ans, passage, docs):
+        """Grade against the matched section; a miss is re-graded once against all the uploaded documents (when they
+        are short enough to show whole), so a correct fact from another document is not marked wrong."""
+        g = self._grade_call(teacher, row, ans, passage)
+        if g is None:
+            return {"correct": False, "reasoning_score": 1, "explanation": "grader failed", "grader_error": True}
+        if passage and docs and not g["correct"]:
+            g2 = self._grade_call(teacher, row, ans, passage, docs)
+            if g2 is not None:
+                g2["all_docs_checked"] = True
+                if g2["correct"]:
+                    g2["regraded"] = "all_docs"
+                    g2["section_explanation"] = g["explanation"]
+                return g2
+        return g
 
     def phase_grade(self, which):
         phase = f"grade_{which}"
@@ -612,28 +660,12 @@ class Job:
         self.state["teacher"] = teacher
         self.prog.start_phase(phase, len(rows), len(done), "grades", PHASE_LABELS[phase])
         passages = self.grounding(rows) if todo else [None] * len(rows)
+        docs = self.all_docs(rows) if todo else [None] * len(rows)
         t0, n_here = time.time(), 0
         for i in todo:
             mc.check_stop()
             ans = (answers.get(i) or {}).get("answer", "")
-            user, system, ctx = self.grade_message(rows[i], ans, passages[i])
-            g = None
-            for attempt in range(3):
-                try:
-                    r = mc.teacher_chat(teacher, [{"role": "system", "content": system},
-                                                  {"role": "user", "content": user}],
-                                        temperature=0.0 if attempt == 0 else 0.3, num_predict=400, num_ctx=ctx, fmt=GRADE_SCHEMA, timeout=600)
-                    g = parse_json_obj(r["message"].get("content", ""))
-                    g = {"correct": bool(g["correct"]), "reasoning_score": max(1, min(5, int(g["reasoning_score"]))),
-                         "explanation": str(g.get("explanation", ""))[:400]}
-                    break
-                except mc.StopRequested:
-                    raise
-                except Exception as e:  # noqa: BLE001
-                    mc.log(f"grade item {i} attempt {attempt + 1} failed: {e}")
-                    time.sleep(3)
-            if g is None:
-                g = {"correct": False, "reasoning_score": 1, "explanation": "grader failed", "grader_error": True}
+            g = self.grade_item(teacher, rows[i], ans, passages[i], docs[i])
             with mc.critical():
                 with open(out_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps({"i": i, **g, **({"grounded": True} if passages[i] else {})}, ensure_ascii=False) + "\n")
@@ -645,12 +677,19 @@ class Job:
         self.save_state()
 
     @staticmethod
-    def grade_message(row, ans, passage):
+    def grade_message(row, ans, passage, docs=None):
         """(user message, system prompt, num_ctx) for one grading call."""
         user = (f"QUESTION:\n{row['prompt']}\n\nREFERENCE ANSWER:\n{row['completion']}\n\n"
                 f"STUDENT ANSWER:\n{ans[:4000] if ans else '(no answer)'}")
         if not passage:
             return user, GRADER_SYSTEM, 8192
+        if docs:
+            # the documents go in the system prompt (identical for every item) so the Teacher can reuse its cached
+            # prefix; only the question, answers and matched section change from call to call
+            system = (GRADER_SYSTEM + ALL_DOCS_GRADER_ADDENDUM
+                      + "\n\nSOURCE DOCUMENTS (all official documents uploaded for this subject)\n" + docs)
+            user = f"{user}\n\nSECTION THE QUESTION WAS WRITTEN FROM:\n{passage}"
+            return user, system, 32768
         user = f"{user}\n\nSOURCE PASSAGE (official document this question was written from):\n{passage}"
         return user, GRADER_SYSTEM + GROUNDED_GRADER_ADDENDUM, 16384
 
@@ -675,6 +714,9 @@ class Job:
                     "grader_errors": sum(1 for x in g if x.get("grader_error"))}
 
         base, trained = summary("base"), summary("trained")
+        regraded = sum(1 for w in ("base", "trained") for x in grd[w].values() if x.get("regraded"))
+        base["regraded_all_docs"] = sum(1 for x in grd["base"].values() if x.get("regraded"))
+        trained["regraded_all_docs"] = sum(1 for x in grd["trained"].values() if x.get("regraded"))
         # examples: prefer items that flipped from wrong to right, then others
         order = sorted(range(len(rows)), key=lambda i: (
             -(int(grd["trained"].get(i, {}).get("correct", False)) - int(grd["base"].get(i, {}).get("correct", False))), i))
@@ -718,7 +760,9 @@ class Job:
                 if (bc := self.state.get("best_checkpoint")) else []),
               f"- Grader: {report['teacher_grader']}"
               + (f" (graded against source documents for {report['grounded_grading']['matched']} of "
-                 f"{report['grounded_grading']['total']} questions)"
+                 f"{report['grounded_grading']['total']} questions"
+                 + (f"; misses re-checked against all uploaded documents, {regraded} changed to correct"
+                    if (report['grounded_grading'].get('all_docs_fallback')) else "") + ")"
                  if (report.get("grounded_grading") or {}).get("matched") else ""), "",
               "| | Untrained | Trained |", "|---|---|---|",
               f"| Accuracy (final answer correct) | {pct(base['accuracy'])} ({base['correct']}/{base['graded']}) | "
@@ -898,8 +942,12 @@ class Job:
             f"({len(regress)} of those the untrained Student had right). {len(pick)} are shown below.",
         ])
         user = f"EVALUATION SUMMARY\n{summary}\n\nMISSED QUESTIONS (sample)\n\n" + "\n\n".join(items)
+        docs_all = next((d for d in (self.all_docs(rows) if grounded else []) if d), None)
+        if docs_all and len(user) + len(docs_all) <= ADVICE_MAX_CHARS:
+            user += ("\n\nSOURCE DOCUMENTS (the whole official material the questions were written from; check facts "
+                     "here before calling anything invented)\n" + docs_all)
         teacher = self.state.get("teacher") or report.get("teacher_grader") or mc.pick_teacher()
-        ctx = 32768 if len(user) > 40000 else 24576 if len(user) > 24000 else 16384
+        ctx = 40960 if len(user) > 90000 else 32768 if len(user) > 40000 else 24576 if len(user) > 24000 else 16384
         mc.log(f"Advice: asking {teacher} to analyze {len(pick)} of {len(wrong)} missed questions "
                f"({len(user):,} chars, num_ctx {ctx})")
         t0 = time.time()
@@ -944,6 +992,67 @@ class Job:
             mc.log(f"WARNING: Teacher analysis of missed questions failed ({msg[:300]}). The job is otherwise complete.")
         self.update(1)
 
+    @staticmethod
+    def _write_grades(path, grades):
+        with mc.critical():
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                for i in sorted(grades):
+                    f.write(json.dumps({"i": i, **{k: v for k, v in grades[i].items() if k != "i"}},
+                                       ensure_ascii=False) + "\n")
+            os.replace(tmp, path)
+
+    def regrade(self) -> dict:
+        """--regrade: re-check the misses of a finished job against all uploaded documents, then rewrite the report and
+        the advice. Does not touch the job's status; progress/phase display is left as it was."""
+        rows = self.eval_items()
+        passages, docs = self.grounding(rows), self.all_docs(rows)
+        teacher = self.state.get("teacher") or mc.pick_teacher()
+        changed = {}
+        for w in ("trained", "base"):
+            path = os.path.join(self.eval_dir, f"grades_{w}.jsonl")
+            answers = self._read_done(os.path.join(self.eval_dir, f"answers_{w}.jsonl"))
+            grades = self._read_done(path)
+            n = 0
+            for i, g in grades.items():
+                if g.get("correct") or g.get("grader_error") or g.get("all_docs_checked") or not (passages[i] and docs[i]):
+                    continue
+                g2 = self._grade_call(teacher, rows[i], (answers.get(i) or {}).get("answer", ""), passages[i], docs[i])
+                if g2 is None:
+                    continue
+                g2["all_docs_checked"] = True
+                if g2["correct"]:
+                    g2["regraded"] = "all_docs"
+                    g2["section_explanation"] = g.get("explanation")
+                    n += 1
+                else:
+                    g2 = {**g, "all_docs_checked": True}
+                grades[i] = {**({"grounded": True} if g.get("grounded") else {}), **g2}
+                self._write_grades(path, grades)  # after every item, so an interrupted regrade resumes
+            self._write_grades(path, grades)
+            changed[w] = sum(1 for x in grades.values() if x.get("regraded"))
+            mc.log(f"Regrade ({w}): {changed[w]} miss(es) changed to correct after checking all uploaded documents")
+        self.save_state()
+
+        class _NoProgress:  # keep the finished job's progress display untouched
+            data: dict = {}
+
+            def start_phase(self, *a, **k):
+                pass
+
+            def update(self, *a, **k):
+                pass
+
+            def finish_phase(self, *a, **k):
+                pass
+
+            def set_extra(self, *a, **k):
+                pass
+
+        self.prog = _NoProgress()
+        self.phase_report()
+        return changed
+
     def run(self):
         mc.log(f"Train job {self.id}: student={self.student} input={self.meta.get('inputFile')}")
         steps = {
@@ -973,7 +1082,18 @@ def main():
     g.add_argument("--job-id")
     g.add_argument("--advice-only", metavar="JOB_ID",
                    help="Only (re)write advice.json for a finished train job; does not touch progress or status.")
+    g.add_argument("--regrade", metavar="JOB_ID",
+                   help="Re-check a finished train job's misses against all uploaded documents, then rewrite the "
+                        "evaluation report and advice; does not touch status.")
     args = ap.parse_args()
+    if args.regrade:
+        job = Job(args.regrade)
+        if not os.path.exists(os.path.join(job.rd, "eval", "grades_trained.jsonl")):
+            raise SystemExit("This job has no graded evaluation yet.")
+        changed = job.regrade()
+        out = job.build_advice()
+        print(json.dumps({"changed_to_correct": changed, "advice_error": out.get("error")}))
+        return
     if args.advice_only:
         job = Job(args.advice_only)
         if not os.path.exists(os.path.join(job.rd, "eval", "grades_trained.jsonl")):

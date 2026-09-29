@@ -54,7 +54,7 @@ export function buildScrubPattern(t: ScrubTerms): { test(line: string): boolean 
 	}
 	const exactParts: string[] = [];
 	for (const id of t.jobIds ?? []) if (id) exactParts.push(`(?<![A-Za-z0-9])${escapeRe(id)}(?![A-Za-z0-9])`);
-	for (const tag of t.modelTags ?? []) if (tag) exactParts.push(escapeRe(tag));
+	for (const tag of t.modelTags ?? []) if (tag) exactParts.push(`${escapeRe(tag)}(?![A-Za-z0-9_.-]*[A-Za-z0-9])`);
 	const res: RegExp[] = [];
 	if (nameParts.length) res.push(new RegExp(nameParts.join('|'), 'iu'));
 	if (exactParts.length) res.push(new RegExp(exactParts.join('|'), 'u'));

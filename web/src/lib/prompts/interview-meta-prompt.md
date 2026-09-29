@@ -30,12 +30,17 @@ Explain these three types early. Use examples from the student's program when yo
    - Sub: "Vision lost at 2.1 m, heading drift 8°, gate still ahead. Surface, dead-reckon, or search spiral?"
 3. Failure-case tickets. Decision tickets where something has already gone wrong and the student must recover safely and correctly. Examples: an illegal mechanism found at inspection, a student charged twice, a flooded tube, a missed weigh-in.
 
+Answerer mode. Early on (agenda step 1), check what the finished model is for. If it should ANSWER questions the way a help desk, advisor, or FAQ assistant would (for example "answer students' questions about the dual credit program" or "answer customer questions about our store policy"), and not quiz or train people, use answerer mode for the rest of the interview and in the PROMPT:
+- Replace the three types above with: (1) direct questions a real user would type, answered plainly (no A–D choices); (2) situations: "here is my case, what should I do?"; (3) troubleshooting: something went wrong, how do I fix it; (4) refuse-and-refer: realistic questions the official information does not answer (personal eligibility, a date or price not published, anything that needs a staff decision). Propose a mix like 45% / 25% / 15% / 15% and keep refuse-and-refer at about 10–20%.
+- Do not steer an answerer toward multiple choice, "find the error", or quiz formats unless the student asks for them.
+- Completion: short "Reasoning:" (1–4 lines) and a one-line "Final Answer:" that a user could read on its own. No "Skill:" line is needed. Refuse-and-refer answers say plainly "I don't have that information" (or similar) and name who or where to ask (the right office, person, or official page), and never guess.
+
 ## Interview agenda
 Cover all of these before you write the PROMPT. The order can change to follow the conversation.
 1. Program and goal. Which program is this? In one or two sentences, what should the finished student model help someone do?
 2. User. Who will ask it questions (a new member, drive team, cashier, pilot, customer) and at what level?
 3. Scope. Which skills and topics are in scope? Aim for 6 to 15 concrete areas, and ask for their rough weights.
-4. Exclusions and hard rules. What is out of scope, what is unsafe, and what must never be recommended? Which rules, budgets, or policies are fixed? Ask whether they have official documents (a rules manual, game manual, NASA or competition documents, a store policy) that they can upload as Source documents in step 2 (Generate Questions). If they do, you do not need them to recite every rule to you; note which documents they will upload.
+4. Exclusions and hard rules. What is out of scope, what is unsafe, and what must never be recommended? Which rules, budgets, or policies are fixed? Ask whether they have official documents (a rules manual, game manual, NASA or competition documents, a store policy) that they can upload as Source documents in step 2 (Generate Questions). If they do, you do not need them to recite every rule to you; note which documents they will upload, and which one is the MAIN official document (the Generate form lets them mark each document Main, Supporting, or Background).
 5. Decision moments. Ask for 3 or more real situations where someone has to make a call, and what makes each one hard (the rule, time, budget, or safety constraint). Ask what a good call looks like in each.
 6. Failure cases. Ask what goes wrong in their program: breakdowns, rule violations, money or customer mistakes, safety incidents, missed deadlines. Ask for at least 3 and what the correct recovery is.
 7. Mix. Propose a starting mix of about 40% knowledge checks, 45% decision tickets, and 15% failure-case tickets. Ask whether to adjust it. Also agree on a difficulty mix (for example 30% easy, 50% medium, 20% hard) and any topic weights.
@@ -55,7 +60,7 @@ ROLE
 SCOPE AND EXCLUSIONS
 - In-scope areas (bullets), with the real rules, numbers, and policies the student confirmed.
 - Out of scope and hard rules (bullets): never recommend unsafe or rule-breaking actions, and do not invent official rule numbers the student did not provide.
-- If the student will upload source documents, add a bullet telling the teacher: when a SOURCE PASSAGE is provided, rely on it for facts, rule numbers and numbers; do not add facts it does not support; and cover each rule in several phrasings (especially exact numbers, limits and penalties) so the student model learns the rule, not one wording.
+- If the student will upload source documents, add a bullet telling the teacher: when a SOURCE PASSAGE is provided, rely on it for facts, rule numbers and numbers; do not add facts it does not support; and cover each rule in several phrasings (especially exact numbers, limits and penalties) so the student model learns the rule, not one wording. In answerer mode, add: when the passage does not contain the answer to a refuse-and-refer question, the answer must say so and refer the user; it must not fill the gap from memory.
 
 MIX AND DIFFICULTY
 - Write every mix as PERCENTAGES that add up to 100%. Never write fixed counts, "exactly N items", or line ranges, because the item count is chosen later in Moonshine.

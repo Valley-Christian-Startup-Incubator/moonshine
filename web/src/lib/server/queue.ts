@@ -34,6 +34,8 @@ export const MAX_SOURCE_DOCS = 20;
 export const MAX_SOURCE_DOC_BYTES = 100 * 1024 * 1024;
 export const MAX_SOURCE_TOTAL_BYTES = 250 * 1024 * 1024;
 export const SOURCE_DOC_PATTERN = /\.(pdf|txt|md|markdown)$/i;
+export { DOC_ROLES, DEFAULT_DOC_ROLE, docRole, type DocRole } from '../types';
+import { docRole, type DocRole } from '../types';
 
 /** Advanced overrides accepted for train jobs (all optional; 0/empty = automatic). */
 export const TRAIN_ADVANCED_KEYS = ['ITERS', 'EPOCHS', 'LEARNING_RATE', 'BATCH_SIZE', 'NUM_LAYERS', 'MAX_SEQ_LENGTH', 'SAVE_EVERY'] as const;
@@ -50,7 +52,7 @@ export interface JobMetaV2 {
 	submittedAt: string;
 	retryOf?: string;
 	/** Generate jobs: uploaded source documents (grounded generation). */
-	docs?: { file: string; name: string; bytes?: number }[];
+	docs?: { file: string; name: string; bytes?: number; role?: DocRole }[];
 }
 
 interface StatusFileV2 {
@@ -109,6 +111,8 @@ export interface JobV2 {
 	progress: JobProgress | null;
 	/** Generate jobs with source documents: original file names. */
 	docNames: string[];
+	/** Role of each document in docNames (main / supporting / background). */
+	docRoles: DocRole[];
 }
 
 export interface QueueSummary {
@@ -139,6 +143,7 @@ function safeName(name: string): string {
 }
 
 type UploadInput = { name: string; data: Uint8Array } | { name: string; path: string };
+type DocInput = UploadInput & { role?: DocRole };
 
 async function storeUpload(jobId: string, upload: UploadInput): Promise<{ file: string; name: string }> {
 	const dir = path.join(JOBS_DIR, jobId);
@@ -155,11 +160,14 @@ async function createJob(meta: JobMetaV2): Promise<void> {
 	await writeJsonAtomic(statusPath(meta.id), { status: 'queued', queued_at: new Date().toISOString() });
 }
 
-async function storeDocs(jobId: string, docs: UploadInput[]): Promise<{ file: string; name: string; bytes: number }[]> {
+async function storeDocs(
+	jobId: string,
+	docs: DocInput[]
+): Promise<{ file: string; name: string; bytes: number; role: DocRole }[]> {
 	const dir = path.join(JOBS_DIR, jobId, 'docs');
 	await mkdir(dir, { recursive: true });
 	const used = new Set<string>();
-	const out: { file: string; name: string; bytes: number }[] = [];
+	const out: { file: string; name: string; bytes: number; role: DocRole }[] = [];
 	for (const d of docs) {
 		let base = safeName(d.name);
 		const ext = path.extname(base);
@@ -168,7 +176,7 @@ async function storeDocs(jobId: string, docs: UploadInput[]): Promise<{ file: st
 		const file = path.join(dir, base);
 		if ('data' in d) await writeFile(file, d.data);
 		else await copyFile(d.path, file);
-		out.push({ file, name: d.name, bytes: (await stat(file)).size });
+		out.push({ file, name: d.name, bytes: (await stat(file)).size, role: docRole(d.role) });
 	}
 	return out;
 }
@@ -190,7 +198,7 @@ export async function submitGenerateJob(opts: {
 	ownerName: string;
 	promptFile: UploadInput;
 	count?: number;
-	docs?: { name: string; data: Uint8Array }[];
+	docs?: { name: string; data: Uint8Array; role?: DocRole }[];
 }): Promise<string> {
 	const count = Math.round(Number(opts.count ?? DEFAULT_QUESTION_COUNT));
 	if (!Number.isFinite(count) || count < 1 || count > MAX_QUESTION_COUNT)
@@ -331,7 +339,8 @@ async function readJob(id: string, queued?: string[]): Promise<JobV2 | null> {
 		outputPath: st.output_path ?? null,
 		ollamaTag: state?.ollama_tag ?? null,
 		progress: await readProgress(id, st.status),
-		docNames: Array.isArray(meta.docs) ? meta.docs.map((d) => d.name) : []
+		docNames: Array.isArray(meta.docs) ? meta.docs.map((d) => d.name) : [],
+		docRoles: Array.isArray(meta.docs) ? meta.docs.map((d) => docRole(d.role)) : []
 	};
 }
 
@@ -455,7 +464,9 @@ export async function retryJob(
 	}
 	const newId = await newJobId();
 	const up = await storeUpload(newId, { name: meta.inputName ?? path.basename(meta.inputFile), path: meta.inputFile });
-	const docs = meta.docs?.length ? await storeDocs(newId, meta.docs.map((d) => ({ name: d.name, path: d.file }))) : undefined;
+	const docs = meta.docs?.length
+		? await storeDocs(newId, meta.docs.map((d) => ({ name: d.name, path: d.file, role: docRole(d.role) })))
+		: undefined;
 	await createJob({
 		...meta,
 		...(docs ? { docs } : {}),
@@ -610,6 +621,11 @@ export interface GenerateCheck {
 	warning: string | null;
 	checkSec: number | null;
 	genSec: number | null;
+	/** Kept refuse-and-refer answers ("I don't have that information; ask your counselor") and how many were checked. */
+	refusalsKept: number;
+	refusalsChecked: number;
+	/** Kept after a support check although the short re-solve could not find the answer. */
+	supportKept: number;
 }
 
 export interface GenerateVariety {
@@ -647,7 +663,10 @@ export async function getGenerateQuality(
 					nearExactDropped: c.near_exact_dropped ?? 0,
 					warning: c.warning ?? null,
 					checkSec: c.check_sec ?? null,
-					genSec: c.gen_sec ?? null
+					genSec: c.gen_sec ?? null,
+					refusalsKept: c.refusals_kept ?? 0,
+					refusalsChecked: c.refusals_checked ?? 0,
+					supportKept: c.support_kept ?? 0
 				}
 			: null,
 		variety: v
@@ -775,6 +794,26 @@ export interface JobDocuments {
 	words: number;
 	/** Sections used so far (from sources.jsonl). */
 	covered: number | null;
+	/** Questions kept per document (by the main section of the batch each question came from). */
+	questionsByDoc: Record<string, number>;
+}
+
+async function readChunkDocs(dir: string): Promise<string[]> {
+	const out: string[] = [];
+	try {
+		for (const line of (await readFile(path.join(dir, 'chunks.jsonl'), 'utf-8')).split('\n')) {
+			if (!line.trim()) continue;
+			try {
+				const c = JSON.parse(line);
+				out[Number(c.id ?? out.length)] = c.doc;
+			} catch {
+				/* skip */
+			}
+		}
+	} catch {
+		/* none */
+	}
+	return out;
 }
 
 /** Source documents of a grounded generate job, after the job has extracted them. */
@@ -784,12 +823,22 @@ export async function getJobDocuments(id: string): Promise<JobDocuments | null> 
 	const d = await readJsonFile<JobDocuments | null>(path.join(dir, 'documents.json'), null);
 	if (!d) return null;
 	let covered: number | null = null;
+	const questionsByDoc: Record<string, number> = {};
 	try {
 		const seen = new Set<number>();
+		let chunkDoc: string[] | null = null; // older jobs: sources.jsonl lines have no "doc"; map the first chunk
 		for (const line of (await readFile(path.join(dir, 'sources.jsonl'), 'utf-8')).split('\n')) {
 			if (!line.trim()) continue;
 			try {
-				for (const c of JSON.parse(line).chunks ?? []) seen.add(Number(c));
+				const o = JSON.parse(line);
+				const ids: number[] = (o.chunks ?? []).map(Number);
+				for (const c of ids) seen.add(c);
+				let doc: string | undefined = o.doc;
+				if (!doc && ids.length) {
+					chunkDoc ??= await readChunkDocs(dir);
+					doc = chunkDoc[ids[0]];
+				}
+				if (doc) questionsByDoc[doc] = (questionsByDoc[doc] ?? 0) + 1;
 			} catch {
 				/* skip */
 			}
@@ -798,7 +847,7 @@ export async function getJobDocuments(id: string): Promise<JobDocuments | null> 
 	} catch {
 		/* not started */
 	}
-	return { docs: d.docs ?? [], chunks: d.chunks ?? 0, words: d.words ?? 0, covered };
+	return { docs: d.docs ?? [], chunks: d.chunks ?? 0, words: d.words ?? 0, covered, questionsByDoc };
 }
 
 export function formatEta(sec: number | null | undefined): string {

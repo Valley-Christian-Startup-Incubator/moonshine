@@ -8,7 +8,7 @@
 	import MiniMarkdown from '$lib/components/MiniMarkdown.svelte';
 	import { computeAdvice } from '$lib/advice';
 	import { formatDuration, formatTimestamp, statusBadgeClass } from '$lib/format';
-	import { JOB_TYPE_LABELS, STATUS_LABELS, type JobStatus } from '$lib/types';
+	import { DOC_ROLE_LABELS, JOB_TYPE_LABELS, STATUS_LABELS, type JobStatus } from '$lib/types';
 	import { pushToast } from '$lib/toast.svelte';
 	import type { PageData } from './$types';
 
@@ -29,6 +29,8 @@
 		no_answer: 'no clear answer when re-solved',
 		invalid_question: 'question has no single correct answer',
 		not_in_source: 'answer not in the source section',
+		wrong_refusal: 'said "I don\'t know" but the source section has the answer',
+		unsupported_refusal: '"I don\'t know" answer added facts the source does not support',
 		no_final_answer_in_completion: 'no final answer in the completion'
 	};
 	const teacherAdvice = $derived(data.advice?.markdown ? data.advice : null);
@@ -161,7 +163,15 @@
 			<p><span class="text-2xl font-semibold text-amber-300">{chk.dropped.toLocaleString()}</span> <span class="text-zinc-400">dropped</span></p>
 			<p><span class="text-2xl font-semibold text-emerald-300">{chk.replaced.toLocaleString()}</span> <span class="text-zinc-400">replaced</span></p>
 			<p><span class="text-2xl font-semibold text-zinc-100">{chk.dropRate == null ? '—' : `${(chk.dropRate * 100).toFixed(1)}%`}</span> <span class="text-zinc-400">drop rate</span></p>
+			<p id="refusals-kept"><span class="text-2xl font-semibold text-sky-300">{chk.refusalsKept.toLocaleString()}</span> <span class="text-zinc-400">"I don't know" answers kept</span></p>
 		</div>
+		<p class="mt-2 text-xs text-zinc-500">
+			"I don't know" answers are questions your documents don't answer, where the answer says so and points to the right
+			person or place. They are kept when the Teacher confirms the source really doesn't have that information{chk.refusalsChecked
+				? ` (${chk.refusalsKept.toLocaleString()} of ${chk.refusalsChecked.toLocaleString()} kept)`
+				: ''}.{#if chk.supportKept}
+				{' '}{chk.supportKept.toLocaleString()} other answer{chk.supportKept === 1 ? ' was' : 's were'} kept after the Teacher found {chk.supportKept === 1 ? 'it' : 'them'} in the source on a second look.{/if}
+		</p>
 		{#if Object.keys(chk.reasons).length}
 			<p class="mt-2 text-xs text-zinc-500">
 				Why they were dropped: {Object.entries(chk.reasons).map(([k, v]) => `${v} × ${REASON_LABELS[k] ?? k}`).join(' · ')}.
@@ -207,8 +217,11 @@
 		<ul class="mt-2 space-y-1 text-sm">
 			{#each job.docNames as name, i (i)}
 				{@const d = data.documents?.docs.find((x) => x.name === name)}
+				{@const nq = data.documents?.questionsByDoc ? (data.documents.questionsByDoc[name] ?? 0) : undefined}
 				<li class="flex flex-wrap items-baseline gap-x-2">
 					<span class="font-mono text-zinc-200">{name}</span>
+					{#if job.docRoles?.[i]}<span class="rounded bg-bg-subtle px-1.5 text-xs text-zinc-400">{DOC_ROLE_LABELS[job.docRoles[i]]}</span>{/if}
+					{#if nq !== undefined}<span class="text-xs text-emerald-300">{nq.toLocaleString()} question{nq === 1 ? '' : 's'}</span>{/if}
 					{#if d}
 						<span class="text-xs {d.error ? 'text-red-400' : 'text-zinc-500'}">
 							{#if d.error}{d.error}{:else}{d.pages ? `${d.pages} pages · ` : ''}{(d.words ?? 0).toLocaleString()} words · {d.chunks} sections{/if}
@@ -219,8 +232,9 @@
 		</ul>
 		{#if data.documents}
 			<p class="mt-2 text-sm text-zinc-300">
-				{data.documents.chunks} sections of about 800–1,500 words{#if data.documents.covered !== null}; {data.documents.covered} used{job.status === 'completed' ? '' : ' so far'}{/if}.
-				Each question's section is listed in the Sources download (one line per question, in the same order).
+				{data.documents.chunks} sections of up to about 1,500 words{#if data.documents.covered !== null}; {data.documents.covered} used{job.status === 'completed' ? '' : ' so far'}{/if}.
+				The question counts show which document each question was mainly written from. Each question's section is listed
+				in the Sources download (one line per question, in the same order).
 			</p>
 		{:else}
 			<p class="mt-2 text-xs text-zinc-500">The documents are split into sections when the job starts.</p>

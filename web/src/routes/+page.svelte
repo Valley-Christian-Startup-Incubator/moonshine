@@ -6,7 +6,14 @@
 	import InterviewChat from '$lib/components/InterviewChat.svelte';
 	import HowMoonshineWorks from '$lib/components/HowMoonshineWorks.svelte';
 	import { formatEstimateRange } from '$lib/format';
-	import { ANSWER_CHECK_OVERHEAD, SECONDS_PER_GENERATED_ITEM, SECONDS_PER_GROUNDED_ITEM } from '$lib/types';
+	import {
+		ANSWER_CHECK_OVERHEAD,
+		DEFAULT_DOC_ROLE,
+		DOC_ROLE_LABELS,
+		DOC_ROLES,
+		SECONDS_PER_GENERATED_ITEM,
+		SECONDS_PER_GROUNDED_ITEM
+	} from '$lib/types';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -51,8 +58,10 @@
 	let count = $state(untrack(() => data.defaultCount));
 	let submitting = $state(false);
 	let docInfo = $state<{ n: number; mb: number; bad: string[] } | null>(null);
+	let docNames = $state<string[]>([]);
 	function inspectDocs(e: Event) {
 		const files = Array.from((e.currentTarget as HTMLInputElement).files ?? []);
+		docNames = files.map((f) => f.name);
 		docInfo = files.length
 			? {
 					n: files.length,
@@ -280,6 +289,30 @@
 					Student never sees the documents: it has to learn the facts from the questions. Leave empty to generate
 					from your PROMPT alone.
 				</p>
+				{#if docNames.length && !docInfo?.bad.length}
+					<fieldset class="mt-3 rounded-md border border-border-subtle px-3 py-2" id="doc-roles">
+						<legend class="px-1 text-xs font-medium text-zinc-300">How much should the Teacher use each document?</legend>
+						<ul class="space-y-2">
+							{#each docNames as name, i (i)}
+								<li class="flex flex-wrap items-center justify-between gap-2">
+									<span class="min-w-0 truncate font-mono text-xs text-zinc-200" title={name}>{name}</span>
+									<select name="docRole" class="input w-auto py-1 text-xs" aria-label="How much to use {name}">
+										{#each DOC_ROLES as r (r)}
+											<option value={r} selected={r === DEFAULT_DOC_ROLE}>{DOC_ROLE_LABELS[r]}</option>
+										{/each}
+									</select>
+								</li>
+							{/each}
+						</ul>
+						<p class="mt-2 text-xs leading-5 text-zinc-500">
+							The Teacher writes each batch of questions from one part of your documents. <strong class="text-zinc-300">Main</strong>
+							documents are used about 3 times as often as Supporting ones; use Main for the official document your model is
+							about. <strong class="text-zinc-300">Background</strong> documents are used only a little, and only for facts related
+							to your topic (good for a general school profile or handbook). If you are not sure, leave everything on Supporting.
+							After the job runs, its page shows how many questions came from each document.
+						</p>
+					</fieldset>
+				{/if}
 				{#if docInfo}
 					<p class="mt-1 text-xs {docInfo.bad.length ? 'text-red-400' : 'text-emerald-400'}">
 						{#if docInfo.bad.length}

@@ -26,6 +26,42 @@
 		preview = d;
 	}
 
+	type AdminJob = PageData['jobs'][number];
+	let jobDialog: HTMLDialogElement | undefined = $state();
+	let jobToDelete = $state<AdminJob | null>(null);
+	let jobConfirmed = $state(false);
+	const canDeleteJob = (j: AdminJob) => ['completed', 'failed', 'cancelled'].includes(j.status) && !j.pending;
+
+	function openJobDelete(j: AdminJob) {
+		jobToDelete = j;
+		jobConfirmed = false;
+		jobDialog?.showModal();
+	}
+
+	async function doJobDelete() {
+		if (!jobToDelete || !jobConfirmed) return;
+		busy = true;
+		try {
+			const res = await fetch('/admin/delete-job', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: jobToDelete.id })
+			});
+			const d = await res.json();
+			if (!res.ok || !d.ok) throw new Error(d.error ?? 'Delete failed');
+			pushToast(
+				`Deleted job ${d.id}: ${d.ollamaModelsDeleted.length} Ollama model(s), ${d.logScrub?.linesRemoved ?? 0} log line(s).` +
+					(d.ollamaModelsFailed.length ? ` Could not delete: ${d.ollamaModelsFailed.join(', ')}` : '')
+			);
+			jobDialog?.close();
+			await invalidateAll();
+		} catch (e) {
+			pushToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function doDelete() {
 		if (!preview || !confirmed) return;
 		busy = true;
@@ -81,7 +117,62 @@
 			<p class="px-4 py-6 text-sm text-zinc-500">No names yet.</p>
 		{/each}
 	</div>
+
+	<h2 class="mt-8 text-lg font-semibold text-zinc-100" id="admin-jobs">Admin: jobs</h2>
+	<p class="mt-1 text-sm text-zinc-400">
+		Delete any single job, whoever owns it: its files, downloads and Ollama model are removed, and log lines about it are
+		scrubbed. Queued, running or paused jobs must be cancelled first.
+	</p>
+	<div class="card mt-3 overflow-x-auto">
+		<table class="w-full text-left text-sm">
+			<thead class="text-xs uppercase text-zinc-500">
+				<tr><th class="px-4 py-2">Job</th><th class="px-4 py-2">Owner</th><th class="px-4 py-2">Type</th><th class="px-4 py-2">Status</th><th class="px-4 py-2">Submitted</th><th class="px-4 py-2"></th></tr>
+			</thead>
+			<tbody class="divide-y divide-border-subtle">
+				{#each data.jobs as j (j.id)}
+					<tr>
+						<td class="px-4 py-2 font-mono text-xs"><a class="text-sky-300 hover:underline" href="/jobs/{j.id}">{j.id}</a></td>
+						<td class="px-4 py-2 text-zinc-200">{j.owner}</td>
+						<td class="px-4 py-2 text-zinc-300">{j.type}</td>
+						<td class="px-4 py-2 text-zinc-300">{j.status}{j.pending ? ` (${j.pending}…)` : ''}</td>
+						<td class="px-4 py-2 text-zinc-400">{new Date(j.submittedAt).toLocaleString()}</td>
+						<td class="px-4 py-2 text-right">
+							{#if canDeleteJob(j)}
+								<button class="btn-danger px-2 py-1 text-xs" onclick={() => openJobDelete(j)} aria-label="Admin delete job {j.id}">Delete</button>
+							{:else}
+								<span class="text-xs text-zinc-500">cancel first</span>
+							{/if}
+						</td>
+					</tr>
+				{:else}
+					<tr><td colspan="6" class="px-4 py-6 text-sm text-zinc-500">No jobs.</td></tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 {/if}
+
+<dialog bind:this={jobDialog} class="w-full max-w-md rounded-lg border border-red-900 bg-bg-elevated p-0 text-zinc-200 backdrop:bg-black/70">
+	<div class="p-5">
+		{#if jobToDelete}
+			<h2 class="text-lg font-semibold text-red-300">Delete job {jobToDelete.id}?</h2>
+			<p class="mt-2 text-sm text-zinc-300">
+				{jobToDelete.type} job by <strong>{jobToDelete.owner}</strong>, {jobToDelete.status}. This permanently deletes the job,
+				its result files and downloads{jobToDelete.ollamaTag ? `, and its Ollama model ${jobToDelete.ollamaTag}` : ''}, and removes
+				log lines about it. This cannot be undone.
+			</p>
+			<label class="mt-4 flex items-center gap-2 text-sm text-zinc-200">
+				<input type="checkbox" bind:checked={jobConfirmed} /> Yes, delete job {jobToDelete.id}
+			</label>
+		{/if}
+		<div class="mt-5 flex justify-end gap-2">
+			<button class="btn-secondary" onclick={() => jobDialog?.close()} disabled={busy}>Keep</button>
+			<button class="inline-flex items-center rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-40" onclick={doJobDelete} disabled={!jobToDelete || !jobConfirmed || busy}>
+				{busy ? 'Deleting…' : 'Delete permanently'}
+			</button>
+		</div>
+	</div>
+</dialog>
 
 <dialog bind:this={dialog} class="w-full max-w-md rounded-lg border border-red-900 bg-bg-elevated p-0 text-zinc-200 backdrop:bg-black/70">
 	<div class="p-5">

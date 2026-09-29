@@ -138,7 +138,7 @@ if command -v uv >/dev/null 2>&1; then
 	if [[ ! -d "${VENV_DIR}" ]]; then
 		uv venv "${VENV_DIR}" --python "${PYTHON_VERSION}"
 	fi
-	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm \
+	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm pdfplumber \
 		"pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
 	uv pip install --python "${VENV_DIR}/bin/python" mlx-tune \
 		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
@@ -157,7 +157,7 @@ else
 		python3 -m venv "${VENV_DIR}"
 	fi
 	"${VENV_DIR}/bin/pip" install --upgrade pip
-	"${VENV_DIR}/bin/pip" install mlx-lm "pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
+	"${VENV_DIR}/bin/pip" install mlx-lm pdfplumber "pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
 	"${VENV_DIR}/bin/pip" install mlx-tune \
 		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
 fi

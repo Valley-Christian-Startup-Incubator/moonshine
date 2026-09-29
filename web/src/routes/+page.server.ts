@@ -10,6 +10,7 @@ import {
 	submitTrainJob,
 	TRAIN_ADVANCED_KEYS,
 	validateSourceDocs,
+	docRole,
 	type TrainAdvanced
 } from '$lib/server/queue';
 
@@ -36,7 +37,14 @@ export const actions: Actions = {
 		const source = form.get('source');
 		const promptText = String(form.get('promptText') ?? '');
 		const file = uploaded(form, 'file');
-		const docFiles = form.getAll('docs').filter((f): f is File => f instanceof File && f.size > 0);
+		// one role per chosen document, in the same order as the files (see the Generate form)
+		const allDocs = form.getAll('docs');
+		const roles = form.getAll('docRole').map(String);
+		const docFiles = allDocs.filter((f): f is File => f instanceof File && f.size > 0);
+		const docRoles = allDocs
+			.map((f, i) => ({ f, role: docRole(roles[i]) }))
+			.filter((x) => x.f instanceof File && x.f.size > 0)
+			.map((x) => x.role);
 		try {
 			validateSourceDocs(docFiles.map((f) => ({ name: f.name, size: f.size })));
 		} catch (e) {
@@ -52,7 +60,9 @@ export const actions: Actions = {
 		}
 		let id: string;
 		try {
-			const docs = await Promise.all(docFiles.map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) })));
+			const docs = await Promise.all(
+				docFiles.map(async (f, i) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()), role: docRoles[i] }))
+			);
 			id = await submitGenerateJob({ ownerName: locals.userName, promptFile, count, docs });
 		} catch (e) {
 			return fail(400, { stage: 'questions', error: e instanceof Error ? e.message : String(e) });

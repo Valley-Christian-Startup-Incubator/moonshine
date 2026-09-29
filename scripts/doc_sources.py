@@ -2,6 +2,12 @@
 """Source documents for grounded question generation (and grounded grading).
 
 - extract_pages(path): [(page_no, text)] from a PDF (pdftotext, else pypdf / PyMuPDF) or .txt/.md.
+  Tables in PDFs are kept whole: with pdfplumber installed, every real table on a page is rebuilt row by
+  row (multi-line cells, merged "Colorado / Christian" cells and blank-down department cells are joined)
+  and rendered as a markdown table ("| Course | College | Code | Units |"); the rest of that page is the
+  text outside the tables. Without pdfplumber, `pdftotext -layout` keeps each table row on its own line.
+- chunking never splits a table row across sections, and a table that must be split repeats its header
+  row(s) at the top of every section.
 - build_chunks(docs): split documents into ~800-1,500-word sections with labels such as
   "manual.pdf p.40-41 · 6.3 Setup" or "notes.md · Safety rules".
 - prepare_job_chunks(job_id, docs): writes results/<id>/chunks.jsonl + documents.json (idempotent).
@@ -36,7 +42,8 @@ def prompt_hash(prompt: str) -> str:
 
 
 def words(s: str) -> int:
-    return len(s.split())
+    """Word count; table borders ("|", "---|") are not words."""
+    return sum(1 for t in s.split() if t.strip("|-"))
 
 
 # ---------------------------------------------------------------- extraction
@@ -45,15 +52,225 @@ def _pdftotext_bin() -> str | None:
         (p for p in ("/opt/homebrew/bin/pdftotext", "/usr/local/bin/pdftotext") if os.path.exists(p)), None)
 
 
+def _pdftotext_pages(exe: str, path: str, layout: bool) -> list[tuple[int, str]]:
+    args = [exe, "-enc", "UTF-8"] + (["-layout"] if layout else []) + [path, "-"]
+    out = subprocess.run(args, capture_output=True, timeout=600, check=True).stdout
+    pages = out.decode("utf-8", errors="replace").split("\f")
+    if pages and not pages[-1].strip():
+        pages = pages[:-1]
+    return [(i + 1, t) for i, t in enumerate(pages)]
+
+
+# ---------------------------------------------------------------- tables
+TABLE_MARK = "|"   # markdown table lines start with "|"
+
+
+def _cell(v) -> str | None:
+    if v is None:
+        return None
+    s = str(v).replace("\r", "")
+    s = re.sub(r"/\s*\n\s*", "/", s)        # "BIO 201/\n211 LAB" -> "BIO 201/211 LAB"
+    s = re.sub(r"\s*\n\s*", " ", s)
+    s = re.sub(r"\s+", " ", s).replace("|", "/").strip()
+    return s
+
+
+def _clean_table(rows: list[list]) -> list[list[str]] | None:
+    """Rebuild a pdfplumber table: join continuation rows and split columns, fill blank-down cells.
+
+    pdfplumber marks cells covered by a merged cell as None and truly empty cells as "". A row with at most one
+    filled cell (e.g. [None, None, None, None, "Christian", None, ...]) is the second line of a merged cell in the
+    row above, so it is appended to that row. Columns with an empty header that never collide with a neighbour are
+    folded into that neighbour ("DUAL CREDIT COLLEGE" spread over three grid columns). Finally, None cells in the
+    first columns (row-spanning cells such as the department) are filled down from the row above.
+    """
+    rows = [[_cell(c) for c in r] for r in rows if r]
+    if not rows:
+        return None
+    ncol = max(len(r) for r in rows)
+    rows = [r + [None] * (ncol - len(r)) for r in rows]
+    merged: list[list[str | None]] = []
+    for r in rows:
+        filled = [i for i, c in enumerate(r) if c]
+        if merged and len(filled) <= 1 and ncol >= 3:
+            for i in filled:
+                prev = merged[-1][i]
+                merged[-1][i] = f"{prev} {r[i]}".strip() if prev else r[i]
+            continue
+        merged.append(list(r))
+    # fold columns whose header is empty into a neighbour when they never both have text in the same row
+    changed = True
+    while changed and len(merged[0]) > 1:
+        changed = False
+        head = merged[0]
+        for j in range(len(head)):
+            if head[j]:
+                continue
+            for k in (j + 1, j - 1):
+                if 0 <= k < len(head) and all(not (r[j] and r[k]) for r in merged):
+                    for r in merged:
+                        if r[j]:
+                            r[k] = r[j]
+                    for r in merged:
+                        del r[j]
+                    changed = True
+                    break
+            if changed:
+                break
+    # drop columns that are empty everywhere
+    keep = [j for j in range(len(merged[0])) if any(r[j] for r in merged)]
+    merged = [[r[j] for j in keep] for r in merged]
+    if not merged or len(merged[0]) < 2:
+        return None
+    body = merged[1:]
+    real = [r for r in body if sum(1 for c in r if c) >= 2]
+    if len(real) < 2:
+        return None
+    # fill down row-spanning cells (None) in the leading columns only
+    for j in range(len(merged[0])):
+        if not any(r[j] is None for r in body):
+            continue
+        last = None
+        for r in body:
+            if r[j] is None and last is not None and sum(1 for c in r if c) >= 2:
+                r[j] = last
+            elif r[j]:
+                last = r[j]
+    return [[c or "" for c in r] for r in merged]
+
+
+def _table_md(rows: list[list[str]], title: str | None = None) -> str:
+    head, body = rows[0], rows[1:]
+    lines = ([f"Table: {title}"] if title else [])
+    lines.append("| " + " | ".join(h or "-" for h in head) + " |")
+    lines.append("|" + "---|" * len(head))
+    lines += ["| " + " | ".join(r) + " |" for r in body]
+    return "\n".join(lines)
+
+
+def _columns_text(page) -> str:
+    """Text of a (filtered) pdfplumber page, one column after another.
+
+    Multi-column pages (school profiles, brochures) read line-by-line across the page mix the columns together.
+    Gutters are vertical strips that (almost) no word crosses; the page is cut there and each strip is read top
+    to bottom, left to right.
+    """
+    words_ = page.extract_words()
+    if not words_:
+        return ""
+    width = int(page.width) + 1
+    cover = [0] * width
+    for w in words_:
+        for x in range(max(0, int(w["x0"])), min(width, int(w["x1"]) + 1)):
+            cover[x] += 1
+    lo, hi = int(width * 0.05), int(width * 0.95)
+    cuts, run = [], 0
+    for x in range(lo, hi):
+        if cover[x] <= 1:
+            run += 1
+        else:
+            if run >= 8:
+                cuts.append(x - run // 2)
+            run = 0
+    if not cuts:
+        return page.extract_text() or ""
+    edges = [page.bbox[0]] + [page.bbox[0] + c for c in cuts] + [page.bbox[2]]
+    parts = []
+    for a, b in zip(edges, edges[1:]):
+        try:
+            t = page.crop((a, page.bbox[1], b, page.bbox[3])).extract_text() or ""
+        except Exception:  # noqa: BLE001
+            t = ""
+        if t.strip():
+            parts.append(t.strip())
+    return "\n\n".join(parts)
+
+
+def _plumber_pages(path: str) -> list[tuple[int, str]] | None:
+    """Pages with real tables rebuilt as markdown; None when pdfplumber is unavailable or finds no table."""
+    try:
+        import logging
+        import pdfplumber  # type: ignore
+        logging.getLogger("pdfminer").setLevel(logging.ERROR)
+    except ImportError:
+        return None
+    out, any_table = [], False
+    with pdfplumber.open(path) as pdf:
+        for i, page in enumerate(pdf.pages):
+            try:
+                found = page.find_tables()
+            except Exception:  # noqa: BLE001
+                found = []
+            tables = []
+            for t in found:
+                rows = _clean_table(t.extract())
+                if rows:
+                    tables.append((t.bbox, rows))
+            if not tables:
+                out.append((i + 1, None))  # filled from pdftotext below (better reading order for prose)
+                continue
+            any_table = True
+            boxes = [b for b, _ in tables]
+
+            def outside(obj, boxes=boxes):
+                x = (obj.get("x0", 0) + obj.get("x1", 0)) / 2
+                y = (obj.get("top", 0) + obj.get("bottom", 0)) / 2
+                return not any(b[0] - 1 <= x <= b[2] + 1 and b[1] - 1 <= y <= b[3] + 1 for b in boxes)
+
+            # text outside the tables, read column by column; tables go after it, in page order
+            ordered = [_table_md(rows) for _, rows in sorted(tables, key=lambda x: x[0][1])]
+            fp = page.filter(outside)
+            n_out = len(fp.extract_words())
+            if n_out >= 150:  # a real page of prose around the tables: read it column by column
+                try:
+                    rest = _columns_text(fp)
+                except Exception:  # noqa: BLE001
+                    rest = fp.extract_text() or ""
+                parts = [rest.strip()] + ordered
+            else:  # a table page with a title and footnotes: keep them above / below the tables
+                first_top = min(b[1] for b in boxes)
+                above, below = [], []
+                try:
+                    for ln in fp.extract_text_lines():
+                        (above if ln.get("top", 0) < first_top else below).append(ln.get("text", ""))
+                except Exception:  # noqa: BLE001
+                    below = (fp.extract_text() or "").splitlines()
+                parts = ["\n".join(above).strip()] + ordered + ["\n".join(below).strip()]
+            out.append((i + 1, "\n\n".join(p for p in parts if p)))
+    return out if any_table else None
+
+
 def _pdf_pages(path: str) -> tuple[list[tuple[int, str]], str]:
     exe = _pdftotext_bin()
+    plumber = None
+    try:
+        plumber = _plumber_pages(path)
+    except Exception as e:  # noqa: BLE001
+        mc.log(f"pdfplumber could not read tables in {os.path.basename(path)} ({e}); using pdftotext")
+    if plumber is not None:
+        plain = None
+        if exe and any(t is None for _, t in plumber):
+            try:
+                plain = dict(_pdftotext_pages(exe, path, layout=False))
+            except Exception:  # noqa: BLE001
+                plain = None
+        pages = []
+        for no, t in plumber:
+            if t is None:
+                t = (plain or {}).get(no)
+                if t is None:
+                    import pdfplumber  # type: ignore
+                    with pdfplumber.open(path) as pdf:
+                        t = pdf.pages[no - 1].extract_text() or ""
+            pages.append((no, t))
+        return pages, "pdfplumber tables + pdftotext"
     if exe:
         try:
-            out = subprocess.run([exe, "-enc", "UTF-8", path, "-"], capture_output=True, timeout=600, check=True).stdout
-            pages = out.decode("utf-8", errors="replace").split("\f")
-            if pages and not pages[-1].strip():
-                pages = pages[:-1]
-            return [(i + 1, t) for i, t in enumerate(pages)], "pdftotext"
+            pages = _pdftotext_pages(exe, path, layout=False)
+            if _looks_tabular(pages):  # no pdfplumber: keep table rows on one line each
+                pages = _pdftotext_pages(exe, path, layout=True)
+                return [(no, _layout_to_rows(t)) for no, t in pages], "pdftotext -layout"
+            return pages, "pdftotext"
         except Exception as e:  # noqa: BLE001
             mc.log(f"pdftotext failed on {os.path.basename(path)} ({e}); trying Python PDF libraries")
     try:
@@ -68,6 +285,17 @@ def _pdf_pages(path: str) -> tuple[list[tuple[int, str]], str]:
         return [(i + 1, p.get_text()) for i, p in enumerate(d)], "pymupdf"
     except ImportError:
         raise SystemExit("No PDF text extractor available (install poppler's pdftotext or pypdf).")
+
+
+def _looks_tabular(pages: list[tuple[int, str]]) -> bool:
+    """Plain pdftotext output of a table: many very short lines (one cell per line)."""
+    lines = [ln.strip() for _, t in pages for ln in t.splitlines() if ln.strip()]
+    return len(lines) >= 30 and sum(1 for ln in lines if len(ln.split()) <= 3) / len(lines) > 0.6
+
+
+def _layout_to_rows(text: str) -> str:
+    """pdftotext -layout: columns separated by 3+ spaces become " | " so the whitespace cleanup keeps them apart."""
+    return "\n".join(re.sub(r"\s{3,}", " | ", ln.strip()) for ln in text.splitlines())
 
 
 def _strip_running_lines(pages: list[tuple[int, str]]) -> list[tuple[int, str]]:
@@ -141,6 +369,9 @@ def _blocks(pages: list[tuple[int, str]]):
     """Yield (page_no, heading_or_None, text) paragraph blocks; headings start their own block."""
     for no, t in pages:
         for para in re.split(r"\n\s*\n", t):
+            if _is_table(para):
+                yield no, None, "\n".join(ln.strip() for ln in para.split("\n") if ln.strip())
+                continue
             buf: list[str] = []
             for ln in para.split("\n"):
                 h = _heading(ln)
@@ -155,7 +386,34 @@ def _blocks(pages: list[tuple[int, str]]):
                 yield no, None, "\n".join(buf)
 
 
+def _is_table(text: str) -> bool:
+    lines = text.split("\n")
+    return sum(1 for ln in lines if ln.startswith(TABLE_MARK)) >= 3
+
+
+def _split_table(text: str, limit: int) -> list[str]:
+    """Split a markdown table between rows; every piece repeats the title and header rows."""
+    lines = text.split("\n")
+    pre = [ln for ln in lines[:1] if not ln.startswith(TABLE_MARK)]
+    tl = [ln for ln in lines if ln.startswith(TABLE_MARK)]
+    head, rows = tl[:2], tl[2:]
+    head_w = words("\n".join(pre + head))
+    pieces, cur, cw = [], [], head_w
+    for r in rows:
+        w = words(r)
+        if cur and cw + w > limit:
+            pieces.append("\n".join(pre + head + cur))
+            cur, cw = [], head_w
+        cur.append(r)
+        cw += w
+    if cur:
+        pieces.append("\n".join(pre + head + cur))
+    return pieces or [text]
+
+
 def _split_long(text: str, limit: int) -> list[str]:
+    if _is_table(text):
+        return _split_table(text, limit)
     toks = text.split(" ")
     return [" ".join(toks[i:i + limit]) for i in range(0, len(toks), limit)]
 
@@ -275,8 +533,24 @@ def prepare_job_chunks(job_id: str, docs: list[dict]) -> list[dict]:
 
 
 # ---------------------------------------------------------------- lookup for grading
+ALL_DOCS_MAX_WORDS = 9000  # uploaded documents up to this size can be shown whole to a checker/grader
+
+
+def all_documents_text(chunks: list[dict], max_words: int = ALL_DOCS_MAX_WORDS) -> str | None:
+    """Every section of a job's documents, grouped by document, or None when they are too long to show at once."""
+    if not chunks or sum(int(c.get("words") or 0) for c in chunks) > max_words:
+        return None
+    by_doc: dict[str, list[str]] = {}
+    for c in chunks:
+        by_doc.setdefault(c["doc"], []).append(c["text"])
+    return "\n\n".join(f"[{d}]\n" + "\n\n".join(t) for d, t in by_doc.items())
+
+
 def lookup_sources(prompts: list[str], exclude_job: str | None = None, max_chars: int = 12000) -> tuple[list[str | None], dict]:
-    """For each prompt, return the source passage text (or None) from any grounded generate job."""
+    """For each prompt, return the source passage text (or None) from any grounded generate job.
+
+    info["all_docs"][i] is the whole document set of that job (all_documents_text) or None: graders fall back to it
+    so an answer that uses a fact from another uploaded document is not marked wrong."""
     want = {prompt_hash(p): i for i, p in enumerate(prompts)}
     found: dict[str, tuple[str, list[int]]] = {}
     jobs_used = Counter()
@@ -304,16 +578,21 @@ def lookup_sources(prompts: list[str], exclude_job: str | None = None, max_chars
         except OSError:
             continue
     cache: dict[str, list[dict]] = {}
+    whole: dict[str, str | None] = {}
     out: list[str | None] = [None] * len(prompts)
+    all_docs: list[str | None] = [None] * len(prompts)
     for h, (d, ids) in found.items():
         if d not in cache:
             cache[d] = read_chunks(os.path.join(mc.RESULTS_DIR, d, "chunks.jsonl"))
+            whole[d] = all_documents_text(cache[d])
         cs = cache[d]
         parts = [f"[{cs[i]['label']}]\n{cs[i]['text']}" for i in ids if 0 <= i < len(cs)]
         if parts:
             out[want[h]] = "\n\n".join(parts)[:max_chars]
+            all_docs[want[h]] = whole[d]
             jobs_used[d] += 1
-    return out, {"matched": sum(1 for x in out if x), "total": len(prompts), "jobs": dict(jobs_used)}
+    return out, {"matched": sum(1 for x in out if x), "total": len(prompts), "jobs": dict(jobs_used),
+                 "all_docs": all_docs, "all_docs_matched": sum(1 for x in all_docs if x)}
 
 
 def main():

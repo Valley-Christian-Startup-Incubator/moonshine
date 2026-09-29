@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { pushToast } from '$lib/toast.svelte';
 
@@ -35,6 +35,27 @@
 			busy = false;
 		}
 	}
+	async function del() {
+		if (
+			!confirm(
+				`Delete job ${id} permanently?\n\nThis removes its questions or results files, its downloads (including the Ollama GGUF), and any Ollama model it created, and removes it from the logs. This cannot be undone.`
+			)
+		)
+			return;
+		busy = true;
+		try {
+			const res = await fetch(`/api/jobs/${id}/delete`, { method: 'POST' });
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok || data.ok === false) throw new Error(data.error ?? 'Could not delete the job.');
+			pushToast(`Deleted job ${id}.`);
+			if ($page.url.pathname.startsWith(`/jobs/${id}`)) await goto('/jobs');
+			else await invalidateAll();
+		} catch (e) {
+			pushToast(e instanceof Error ? e.message : String(e), 'error');
+		} finally {
+			busy = false;
+		}
+	}
 	const cls = $derived(compact ? 'px-2 py-1 text-xs' : '');
 </script>
 
@@ -52,6 +73,9 @@
 		{/if}
 		{#if status === 'queued' || status === 'running' || status === 'paused'}
 			<button type="button" class="btn-danger {cls}" disabled={busy} onclick={() => act('cancel')}>Cancel</button>
+		{/if}
+		{#if status === 'completed' || status === 'failed' || status === 'cancelled'}
+			<button type="button" class="btn-danger {cls}" disabled={busy} onclick={() => del()} aria-label="Delete job {id}">Delete</button>
 		{/if}
 	{/if}
 </div>
