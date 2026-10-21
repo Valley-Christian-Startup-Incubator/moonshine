@@ -221,9 +221,12 @@ chmod +x "${DISTILL_HOME}/start.sh" "${DISTILL_HOME}/stop.sh"
 LAUNCHD_DIR="$HOME/Library/LaunchAgents"
 mkdir -p "${LAUNCHD_DIR}"
 
+QUEUE_MODE=false
+[[ -f "${SCRIPT_DIR}/launchd/com.distill.queue.plist" ]] && QUEUE_MODE=true
 DAGU_PLIST="${LAUNCHD_DIR}/com.distill.dagu.plist"
 WEB_PLIST="${LAUNCHD_DIR}/com.distill.web.plist"
 
+if [[ "${QUEUE_MODE}" == false ]]; then
 cat > "${DAGU_PLIST}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -263,6 +266,8 @@ cat > "${DAGU_PLIST}" <<EOF
 </plist>
 EOF
 
+fi
+
 cat > "${WEB_PLIST}" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -297,28 +302,39 @@ cat > "${WEB_PLIST}" <<EOF
 </dict>
 </plist>
 EOF
-chmod 600 "${DAGU_PLIST}" "${WEB_PLIST}"
+chmod 600 "${WEB_PLIST}"
+if [[ "${QUEUE_MODE}" == false ]]; then chmod 600 "${DAGU_PLIST}"; fi
 
 log "Loading launchd services"
 LAUNCHD_DOMAIN="user/$(id -u)"
-launchctl bootout "${LAUNCHD_DOMAIN}/com.distill.dagu" >/dev/null 2>&1 || true
+if [[ "${QUEUE_MODE}" == false ]]; then
+	launchctl bootout "${LAUNCHD_DOMAIN}/com.distill.dagu" >/dev/null 2>&1 || true
+fi
 launchctl bootout "${LAUNCHD_DOMAIN}/com.distill.web" >/dev/null 2>&1 || true
 
 # bootout is asynchronous. Give the old processes a moment to release their
 # ports, then fail clearly if another application owns either one.
 for _ in {1..20}; do
-	if ! nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1 \
+	if { [[ "${QUEUE_MODE}" == true ]] || ! nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1; } \
 		&& ! nc -z 127.0.0.1 "${WEB_PORT}" >/dev/null 2>&1; then
 		break
 	fi
 	sleep 0.1
 done
-nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1 \
-	&& die "Port ${DAGU_PORT} is already in use. Re-run with DAGU_PORT=<free port>."
+if [[ "${QUEUE_MODE}" == false ]]; then
+	nc -z 127.0.0.1 "${DAGU_PORT}" >/dev/null 2>&1 \
+		&& die "Port ${DAGU_PORT} is already in use. Re-run with DAGU_PORT=<free port>."
+fi
 nc -z 127.0.0.1 "${WEB_PORT}" >/dev/null 2>&1 \
 	&& die "Port ${WEB_PORT} is already in use. Re-run with WEB_PORT=<free port>."
 
-launchctl bootstrap "${LAUNCHD_DOMAIN}" "${DAGU_PLIST}"
+if [[ "${QUEUE_MODE}" == false ]]; then
+	launchctl bootstrap "${LAUNCHD_DOMAIN}" "${DAGU_PLIST}"
+else
+	cp "${SCRIPT_DIR}/launchd/com.distill.queue.plist" "${LAUNCHD_DIR}/com.distill.queue.plist"
+	chmod 600 "${LAUNCHD_DIR}/com.distill.queue.plist"
+	launchctl bootstrap "${LAUNCHD_DOMAIN}" "${LAUNCHD_DIR}/com.distill.queue.plist"
+fi
 launchctl bootstrap "${LAUNCHD_DOMAIN}" "${WEB_PLIST}"
 
 wait_for_port() {
@@ -333,10 +349,12 @@ wait_for_port() {
 	die "${service} did not start on port ${port}. Check ${DISTILL_HOME}/logs for details."
 }
 
-wait_for_port "Dagu" "${DAGU_PORT}"
+if [[ "${QUEUE_MODE}" == false ]]; then wait_for_port "Dagu" "${DAGU_PORT}"; fi
 wait_for_port "Web app" "${WEB_PORT}"
 
 # ---------------------------------------------------------------------------
+SCHEDULER_SERVICE=com.distill.dagu
+[[ "${QUEUE_MODE}" == true ]] && SCHEDULER_SERVICE=com.distill.queue
 LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || echo "<mac-studio-ip>")"
 
 cat <<SUMMARY
@@ -357,7 +375,7 @@ cat <<SUMMARY
  They are also saved to: ${DISTILL_HOME}/env
 
  Services run via launchd and start automatically on boot:
-   com.distill.dagu   (Dagu server, port ${DAGU_PORT})
+   ${SCHEDULER_SERVICE} (job scheduler)
    com.distill.web    (SvelteKit app, port ${WEB_PORT})
 
  Manual controls:
