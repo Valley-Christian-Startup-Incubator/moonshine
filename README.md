@@ -226,3 +226,11 @@ per-user accounts; the admin and Dagu operator surfaces have separate credential
 
 Architecture, the Dagu/MLX internals, the retry/resume design, and the AI
 diagnosis feature are documented in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+## October 2026 certificate security update
+
+Setup requires uv 0.13.4+ and a patched Node runtime: 22.23.4+, 24.22.1+, or 26.12.1+ on those release lines. Install verified runtimes before running `setup.sh`; setup stops if they are missing or too old.
+
+Python HTTP dependencies have minimum versions in `requirements-security.txt`. Direct urllib calls use certifi explicitly. Scheduled processes receive the current CA file and an empty CA directory, and Hugging Face's optional Xet transport is disabled so model downloads use the Python HTTP stack with that bundle.
+
+Dagu remains 1.17.4, rebuilt with Go 1.27.3. Setup downloads the [verified runtime release](https://github.com/Valley-Christian-Startup-Incubator/moonshine/releases/tag/security-2026-10-21), checks the archive and executable SHA-256, and preserves the previous executable for rollback. The runtime release includes corresponding source, licenses, build provenance and actual HTTP-step TLS evidence. All 220 embedded assets/templates match the original release.
