@@ -89,22 +89,52 @@ mkdir -p \
 	"${DISTILL_HOME}/logs"
 
 # ---------------------------------------------------------------------------
+log "Setting up Python ${PYTHON_VERSION} venv at ${VENV_DIR}"
+# ---------------------------------------------------------------------------
+command -v uv >/dev/null 2>&1 || die "Install verified uv 0.13.4+ before running setup (https://github.com/astral-sh/uv/releases)."
+uv_version="$(uv --version | awk '{print $2}')"
+IFS=. read -r uv_major uv_minor uv_patch <<<"${uv_version}"
+if [[ "${uv_major}" -eq 0 ]] && { [[ "${uv_minor}" -lt 13 ]] || { [[ "${uv_minor}" -eq 13 ]] && [[ "${uv_patch}" -lt 4 ]]; }; }; then
+	die "uv 0.13.4+ is required for the October 2026 certificate fix."
+fi
+uv python install "${PYTHON_VERSION}"
+if [[ ! -d "${VENV_DIR}" ]]; then
+	uv venv "${VENV_DIR}" --python "${PYTHON_VERSION}"
+fi
+uv pip install --python "${VENV_DIR}/bin/python" pip mlx-lm \
+	"pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}" -r "${SCRIPT_DIR}/requirements-security.txt"
+uv pip install --python "${VENV_DIR}/bin/python" mlx-tune \
+	|| warn "mlx-tune unavailable; the mlx-lm LoRA trainer remains available."
+
+CA_BUNDLE="$("${VENV_DIR}/bin/python" -c 'import certifi; print(certifi.where())')"
+mkdir -p "${DISTILL_HOME}/empty-ca-directory"
+export SSL_CERT_FILE="${CA_BUNDLE}"
+export SSL_CERT_DIR="${DISTILL_HOME}/empty-ca-directory"
+export HF_HUB_DISABLE_XET=1
+
+# ---------------------------------------------------------------------------
 log "Installing Dagu ${DAGU_VERSION}"
 # ---------------------------------------------------------------------------
-if command -v dagu >/dev/null 2>&1 && dagu version 2>&1 | grep -q "${DAGU_VERSION}"; then
-	log "Dagu ${DAGU_VERSION} already installed, skipping."
+DAGU_TARBALL="dagu_${DAGU_VERSION}_go1.27.3_darwin_arm64.tar.gz"
+DAGU_URL="https://github.com/Valley-Christian-Startup-Incubator/moonshine/releases/download/security-2026-10-21/${DAGU_TARBALL}"
+DAGU_ARCHIVE_SHA256="2ea3cac626051e9945909bb660ce3974e158db7ff1cfce807edb7240b8aa21d0"
+DAGU_BINARY_SHA256="7030d07238a26080a808a6fcd997cd126eca785f1bb72b08329fb8aedc753f44"
+if [[ -x "${BIN_DIR}/dagu" ]] && [[ "$(shasum -a 256 "${BIN_DIR}/dagu" | awk '{print $1}')" == "${DAGU_BINARY_SHA256}" ]]; then
+	log "Verified Dagu ${DAGU_VERSION} / Go 1.27.3 already installed."
 else
-	DAGU_TARBALL="dagu_${DAGU_VERSION}_darwin_arm64.tar.gz"
-	DAGU_URL="https://github.com/dagu-org/dagu/releases/download/v${DAGU_VERSION}/${DAGU_TARBALL}"
 	TMP_DIR="$(mktemp -d)"
-	log "Downloading ${DAGU_URL}"
-	curl -fsSL "${DAGU_URL}" -o "${TMP_DIR}/${DAGU_TARBALL}" \
-		|| die "Failed to download Dagu. Check DAGU_VERSION or your network connection."
+	"${VENV_DIR}/bin/python" "${SCRIPT_DIR}/scripts/download_verified.py" \
+		"${DAGU_URL}" "${DAGU_ARCHIVE_SHA256}" "${TMP_DIR}/${DAGU_TARBALL}"
 	tar -xzf "${TMP_DIR}/${DAGU_TARBALL}" -C "${TMP_DIR}"
-	mkdir -p "${BIN_DIR}"
+	[[ "$(shasum -a 256 "${TMP_DIR}/dagu" | awk '{print $1}')" == "${DAGU_BINARY_SHA256}" ]] \
+		|| die "Dagu executable checksum mismatch."
+	mkdir -p "${BIN_DIR}" "${DISTILL_HOME}/security-backups"
+	if [[ -f "${BIN_DIR}/dagu" && ! -f "${DISTILL_HOME}/security-backups/dagu-before-20261021" ]]; then
+		cp -p "${BIN_DIR}/dagu" "${DISTILL_HOME}/security-backups/dagu-before-20261021"
+	fi
 	install -m 755 "${TMP_DIR}/dagu" "${BIN_DIR}/dagu"
 	rm -rf "${TMP_DIR}"
-	log "Installed dagu $(dagu version 2>&1 || echo "${DAGU_VERSION}") to ${BIN_DIR}/dagu"
+	log "Installed verified Dagu ${DAGU_VERSION} rebuilt with Go 1.27.3."
 fi
 
 # Prefer the copy we manage; only fall back to a pre-existing one on PATH.
@@ -119,69 +149,19 @@ case ":${ORIG_PATH}:" in
 	*) warn "${BIN_DIR} is not on your PATH — add it to your shell profile so you can run dagu directly: export PATH=\"${BIN_DIR}:\$PATH\"" ;;
 esac
 
-# ---------------------------------------------------------------------------
-log "Setting up Python ${PYTHON_VERSION} venv at ${VENV_DIR}"
-# ---------------------------------------------------------------------------
-# Prefer uv for this: it can fetch and manage its own Python builds, so we
-# don't depend on whatever python3 (if any) happens to be on the system —
-# and don't need Homebrew's python formula as a prerequisite either.
-if ! command -v uv >/dev/null 2>&1; then
-	log "uv not found, installing it (https://astral.sh/uv)"
-	curl -LsSf https://astral.sh/uv/install.sh | sh \
-		|| warn "Automatic uv install failed; falling back to a system python3 if one is present."
-	export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
-fi
-
-if command -v uv >/dev/null 2>&1; then
-	log "Using uv to provision Python ${PYTHON_VERSION} and the venv"
-	uv python install "${PYTHON_VERSION}"
-	if [[ ! -d "${VENV_DIR}" ]]; then
-		uv venv "${VENV_DIR}" --python "${PYTHON_VERSION}"
-	fi
-	uv pip install --python "${VENV_DIR}/bin/python" --upgrade pip mlx-lm \
-		"pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
-	uv pip install --python "${VENV_DIR}/bin/python" mlx-tune \
-		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
-else
-	log "uv unavailable, falling back to system python3"
-	command -v python3 >/dev/null 2>&1 || die "Neither uv nor python3 is available. Install uv manually from https://astral.sh/uv and re-run."
-
-	py_version="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-	py_major="${py_version%%.*}"
-	py_minor="${py_version##*.}"
-	if [[ "${py_major}" -lt 3 || ("${py_major}" -eq 3 && "${py_minor}" -lt 11) ]]; then
-		die "python3 3.11+ required (found ${py_version}) and uv could not be installed automatically. Install uv from https://astral.sh/uv and re-run."
-	fi
-
-	if [[ ! -d "${VENV_DIR}" ]]; then
-		python3 -m venv "${VENV_DIR}"
-	fi
-	"${VENV_DIR}/bin/pip" install --upgrade pip
-	"${VENV_DIR}/bin/pip" install mlx-lm "pydantic-ai-slim[openai]==${PYDANTIC_AI_VERSION}"
-	"${VENV_DIR}/bin/pip" install mlx-tune \
-		|| warn "mlx-tune not available on PyPI for this environment; skipping (mlx-lm's own LoRA trainer is used by finetune.yaml regardless)."
-fi
 
 # ---------------------------------------------------------------------------
 log "Installing Node.js dependencies and building the SvelteKit app"
 # ---------------------------------------------------------------------------
-if ! command -v node >/dev/null 2>&1; then
-	if command -v brew >/dev/null 2>&1; then
-		log "Node.js not found, installing via Homebrew"
-		brew install node
-	else
-		die "Node.js 20+ is required and neither node nor Homebrew was found. Install Node into your home directory (e.g. via https://github.com/nvm-sh/nvm or https://mise.jdx.dev) and re-run."
-	fi
-fi
+command -v node >/dev/null 2>&1 || die "Install a patched Node.js runtime (22.23.4, 24.22.1, or 26.12.1+) before running setup."
 
-node_major="$(node -v | sed 's/v//' | cut -d. -f1)"
-if [[ "${node_major}" -lt 20 ]]; then
-	die "Node.js 20+ required, found $(node -v)."
+if ! node -e 'const [major, minor, patch] = process.versions.node.split(".").map(Number); const floors = {22:[23,4],24:[22,1],26:[12,1]}; const f=floors[major]; process.exit(f && (minor>f[0] || (minor===f[0] && patch>=f[1])) ? 0 : 1)'; then
+	die "Node.js 22.23.4, 24.22.1, or 26.12.1+ on those release lines is required for the October 2026 certificate fix."
 fi
 NODE_BIN="$(command -v node)"
 
 pushd "${SCRIPT_DIR}/web" >/dev/null
-npm install
+npm ci
 npm run build
 popd >/dev/null
 
@@ -225,6 +205,9 @@ DIAGNOSTIC_MODEL=${DIAGNOSTIC_MODEL}
 DIAGNOSTIC_OLLAMA_URL=${DIAGNOSTIC_OLLAMA_URL}
 OPENAI_API_KEY=${OPENAI_API_KEY}
 TOPIC_CHAT_MODEL=${TOPIC_CHAT_MODEL}
+SSL_CERT_FILE=${CA_BUNDLE}
+SSL_CERT_DIR=${DISTILL_HOME}/empty-ca-directory
+HF_HUB_DISABLE_XET=1
 EOF
 chmod 600 "${ENV_FILE}"
 
@@ -268,6 +251,9 @@ cat > "${DAGU_PLIST}" <<EOF
 		     shells out to claude/codex by name, so PATH needs to include
 		     wherever those CLIs are installed. -->
 		<key>PATH</key><string>${EXTRA_PATH}:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>SSL_CERT_FILE</key><string>${CA_BUNDLE}</string>
+		<key>SSL_CERT_DIR</key><string>${DISTILL_HOME}/empty-ca-directory</string>
+		<key>HF_HUB_DISABLE_XET</key><string>1</string>
 		<key>DIAGNOSTIC_AGENT</key><string>${DIAGNOSTIC_AGENT}</string>
 		<key>DIAGNOSTIC_MODEL</key><string>${DIAGNOSTIC_MODEL}</string>
 		<key>DIAGNOSTIC_OLLAMA_URL</key><string>${DIAGNOSTIC_OLLAMA_URL}</string>

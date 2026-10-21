@@ -11,12 +11,12 @@ DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
 # passwords containing spaces or shell metacharacters intact.
 while IFS='=' read -r key value; do
 	case "${key}" in
-		DISTILL_HOME|DAGU_BASE_URL|DAGU_PORT|DAGU_USER|DAGU_PASSWORD|ADMIN_PASSWORD|WEB_PASSWORD|PORT|BODY_SIZE_LIMIT|DIAGNOSTIC_AGENT|DIAGNOSTIC_MODEL|DIAGNOSTIC_OLLAMA_URL|OPENAI_API_KEY|TOPIC_CHAT_MODEL)
+		DISTILL_HOME|DAGU_BASE_URL|DAGU_PORT|DAGU_USER|DAGU_PASSWORD|ADMIN_PASSWORD|WEB_PASSWORD|PORT|BODY_SIZE_LIMIT|DIAGNOSTIC_AGENT|DIAGNOSTIC_MODEL|DIAGNOSTIC_OLLAMA_URL|OPENAI_API_KEY|TOPIC_CHAT_MODEL|SSL_CERT_FILE|SSL_CERT_DIR|HF_HUB_DISABLE_XET)
 			export "${key}=${value}"
 			;;
 	esac
 done < "${DISTILL_HOME}/env"
-export PATH="/opt/homebrew/bin:/usr/local/bin:${HOME}/.local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin:${PATH}"
+export PATH="${HOME}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${HOME}/.cargo/bin:${HOME}/.npm-global/bin:${PATH}"
 
 PID_DIR="${DISTILL_HOME}/logs"
 mkdir -p "${PID_DIR}"

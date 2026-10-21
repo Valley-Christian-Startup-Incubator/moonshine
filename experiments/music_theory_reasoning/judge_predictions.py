@@ -11,6 +11,9 @@ import random
 import time
 import urllib.error
 import urllib.request
+import ssl
+
+import certifi
 from pathlib import Path
 
 
@@ -75,7 +78,7 @@ def request_judgment(model: str, payload: dict, retries: int = 5) -> dict:
     )
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(request, timeout=120) as response:
+            with urllib.request.urlopen(request, timeout=120, context=ssl.create_default_context(cafile=certifi.where())) as response:
                 message = json.load(response)["choices"][0]["message"]["content"]
             return json.loads(message)
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError):
