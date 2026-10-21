@@ -29,6 +29,9 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+import ssl
+
+import certifi
 
 AGENT_TIMEOUT_SEC = 120
 LOG_TAIL_LINES = 150
@@ -100,7 +103,7 @@ def invoke_ollama(
 def ollama_is_available() -> bool:
 	base_url = os.environ.get("DIAGNOSTIC_OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/")
 	try:
-		with urllib.request.urlopen(f"{base_url}/api/tags", timeout=1):
+		with urllib.request.urlopen(f"{base_url}/api/tags", timeout=1, context=ssl.create_default_context(cafile=certifi.where())):
 			return True
 	except (OSError, urllib.error.URLError):
 		return False
