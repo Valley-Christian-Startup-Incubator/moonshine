@@ -4,6 +4,7 @@
 	import { page } from '$app/stores';
 	import JobControls from '$lib/components/JobControls.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
+	import RunActivity from '$lib/components/RunActivity.svelte';
 	import LossChart from '$lib/components/LossChart.svelte';
 	import MiniMarkdown from '$lib/components/MiniMarkdown.svelte';
 	import { computeAdvice } from '$lib/advice';
@@ -126,6 +127,8 @@
 		{#if data.queue.blockedByPause}The queue is on hold because another job is paused.{/if}
 	</div>
 {/if}
+
+<RunActivity type={job.type} status={job.status} progress={job.progress} docNames={job.docNames} />
 
 <div class="mt-5 grid gap-4 md:grid-cols-3">
 	<div class="card p-4 md:col-span-2">
