@@ -7,8 +7,10 @@
 		type,
 		status,
 		progress,
-		docNames = []
-	}: { type: JobType; status: JobStatus; progress: Progress; docNames?: string[] } = $props();
+		docNames = [],
+		sampleText,
+		sampleCapturedAt
+	}: { type: JobType; status: JobStatus; progress: Progress; docNames?: string[]; sampleText?: string; sampleCapturedAt?: string } = $props();
 
 	// The stage only draws an illustration. The share of lit particles follows the same reported progress as the
 	// progress bar below, and a pulse runs each time a new report arrives. Nothing here comes from model activations.
@@ -37,7 +39,7 @@
 	const animating = $derived(running && available && motionOn && !hidden && onScreen);
 	const fill = $derived(status === 'completed' ? 1 : status === 'queued' ? 0 : (progress?.percent ?? 0) / 100);
 	const short = (s: string) => (s.length > 28 ? `${s.slice(0, 27)}…` : s);
-	const phrases = $derived(
+	const illustrativePhrases = $derived(
 		type === 'train'
 			? ['Read a training question', 'Compare with the Teacher’s answer', 'Adjust the Student a little']
 			: [
@@ -46,6 +48,11 @@
 					'Re-solve it to check'
 				]
 	);
+	const phrases = $derived.by(() => {
+		if (!sampleText) return illustrativePhrases;
+		const words = sampleText.split(/\s+/).slice(0, 18);
+		return [words.slice(0, 6), words.slice(6, 12), words.slice(12, 18)].filter((lane) => lane.length).map((lane) => lane.join(' '));
+	});
 	const actor = $derived(type === 'train' ? 'Student · learning from examples' : 'Teacher · writing questions');
 	const headline = $derived.by(() => {
 		switch (status) {
@@ -284,7 +291,7 @@
 	</div>
 	<p class="model-label">{actor}</p>
 	<div class="absolute bottom-3 left-5 right-5 flex items-center justify-between gap-3 text-[11px] text-zinc-500">
-		<span>{available ? 'Illustration · follows reported progress, not model activations' : '3D view unavailable · progress below still updates'}</span>
+		<span>{!available ? '3D view unavailable · progress below still updates' : sampleText ? 'Recent batch excerpt · illustrative motion, not a live token feed' : 'Illustration · follows reported progress, not model activations'}{#if sampleText && sampleCapturedAt} · <time datetime={sampleCapturedAt}>captured {new Date(sampleCapturedAt).toLocaleTimeString()}</time>{/if}</span>
 		{#if running}
 			<button
 				class="shrink-0 rounded border border-zinc-700 px-2 py-1 text-zinc-300 hover:bg-white/5"

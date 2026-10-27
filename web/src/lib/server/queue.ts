@@ -98,6 +98,7 @@ export interface JobV2 {
 	inputName: string;
 	submittedAt: string;
 	startedAt?: string;
+	lastStartedAt?: string;
 	completedAt?: string;
 	pausedAt?: string;
 	attempts: number;
@@ -330,6 +331,7 @@ async function readJob(id: string, queued?: string[]): Promise<JobV2 | null> {
 		inputName: meta.inputName ?? path.basename(meta.inputFile),
 		submittedAt: meta.submittedAt,
 		startedAt: st.started_at,
+		lastStartedAt: st.last_started_at,
 		completedAt: st.completed_at,
 		pausedAt: st.status === 'paused' ? st.paused_at : undefined,
 		attempts: st.attempts ?? 0,

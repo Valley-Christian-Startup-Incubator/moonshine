@@ -5,6 +5,8 @@
 	import JobControls from '$lib/components/JobControls.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RunActivity from '$lib/components/RunActivity.svelte';
+	import TrainingSample from '$lib/components/TrainingSample.svelte';
+	import { trainingExcerptState } from '$lib/training-sample';
 	import LossChart from '$lib/components/LossChart.svelte';
 	import MiniMarkdown from '$lib/components/MiniMarkdown.svelte';
 	import { computeAdvice } from '$lib/advice';
@@ -52,6 +54,22 @@
 	);
 	const advancedArtifacts = $derived(data.artifacts.filter((a) => !MAIN_KEYS.includes(a.key)));
 	const live = $derived(job.status === 'running' || job.status === 'queued' || Boolean(job.pendingAction));
+	let sampleClockElapsed = $state(0);
+	const sampleNow = $derived(data.serverNow + sampleClockElapsed);
+	const sampleUpdatesDelayed = $derived(job.status === 'running' && sampleClockElapsed > 15_000);
+	const sampleState = $derived(trainingExcerptState({
+		sample: data.trainingSample, status: job.status, phase: job.progress?.phase ?? null,
+		isOwner: data.isOwner, now: sampleNow, updatesDelayed: sampleUpdatesDelayed,
+		pendingAction: Boolean(job.pendingAction)
+	}));
+	$effect(() => {
+		data.serverNow;
+		sampleClockElapsed = 0;
+		if (job.type !== 'train' || job.status !== 'running') return;
+		const receivedAt = performance.now();
+		const timer = setInterval(() => { sampleClockElapsed = performance.now() - receivedAt; }, 1000);
+		return () => clearInterval(timer);
+	});
 	const gb = (b: number | null | undefined) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
 	let logEl: HTMLPreElement | undefined = $state();
 	let follow = $state(true);
@@ -128,7 +146,10 @@
 	</div>
 {/if}
 
-<RunActivity type={job.type} status={job.status} progress={job.progress} docNames={job.docNames} />
+<RunActivity type={job.type} status={job.status} progress={job.progress} docNames={job.docNames} sampleText={sampleState === 'recent' ? data.trainingSample?.text : undefined} sampleCapturedAt={data.trainingSample?.capturedAt} />
+{#if job.type === 'train'}
+	<TrainingSample sample={data.trainingSample} state={sampleState} now={sampleNow} status={job.status} updatesDelayed={sampleUpdatesDelayed} />
+{/if}
 
 <div class="mt-5 grid gap-4 md:grid-cols-3">
 	<div class="card p-4 md:col-span-2">

@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -426,6 +427,8 @@ class Job:
         self._normalize_checkpoints()
         done_iters, ckpt = self._latest_checkpoint()
         total = cfg["iters"]
+        sample_run_id = str(uuid.uuid4())
+        self.prog.data.setdefault("extra", {})["training_sample_run_id"] = sample_run_id
         self.prog.start_phase("train", total, done_iters, "steps", PHASE_LABELS["train"])
         if done_iters >= total and os.path.exists(os.path.join(self.adapter_dir, "adapters.safetensors")):
             mc.log("Training already complete (checkpoint at final step).")
@@ -440,7 +443,10 @@ class Job:
                    + ("" if cfg.get("epochs_user") or cfg.get("iters_user") else
                       f", default for {self.state['n_train']} training items") + f"), batch {cfg['batch_size']}; "
                    f"checkpoint + validation loss every {cfg['save_every']} steps on {cfg['val_items']} held-out items")
-        cmd = [os.path.join(VENV_BIN, "mlx_lm.lora"), "--model", self.model_path, "--train",
+        cmd = [sys.executable, os.path.join(os.path.dirname(__file__), "train_with_samples.py"),
+               "--sample-output", os.path.join(self.rd, "training_sample.json"),
+               "--sample-run-id", sample_run_id, "--sample-offset", str(done_iters),
+               "--model", self.model_path, "--train",
                "--data", self.lora_data_dir(cfg), "--adapter-path", self.adapter_dir, "--mask-prompt",
                "--iters", str(remaining), "--batch-size", str(cfg["batch_size"]),
                "--learning-rate", str(cfg["learning_rate"]), "--num-layers", str(cfg["num_layers"]),
