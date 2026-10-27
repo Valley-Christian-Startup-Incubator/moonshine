@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { readTrainingSample } from '$lib/server/training-sample';
 import {
 	getEvalReport,
 	getGgufStatus,
@@ -18,6 +19,13 @@ import {
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const job = await getJob(params.id);
 	if (!job) error(404, 'Job not found');
+	const isOwner = isJobOwner(job, locals.userName);
+	const trainingSample = await readTrainingSample({
+		jobId: job.id,
+		runId: job.progress?.extra.training_sample_run_id,
+		attemptStartedAt: job.lastStartedAt,
+		canView: job.type === 'train' && isOwner
+	});
 	const [logTail, diagnosis, artifacts, report, curve, queue, documents, gguf, advice, quality] = await Promise.all([
 		getJobLogTail(job.id, 200),
 		job.status === 'failed' ? getJobDiagnosis(job.id) : Promise.resolve(null),
@@ -47,6 +55,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		gguf,
 		advice,
 		quality,
-		isOwner: isJobOwner(job, locals.userName)
+		trainingSample,
+		serverNow: Date.now(),
+		isOwner
 	};
 };

@@ -1,0 +1,13 @@
+run,warmup,mode,seconds,last_sample_step,max_weight_delta
+0,True,baseline,13.859518749988638,,0.0
+1,True,sample_5s,13.862735665999935,76,0.0
+2,False,baseline,13.773878042004071,,0.0
+3,False,sample_5s,13.80932870801189,77,0.0
+4,False,baseline,13.887521124997875,,0.0
+5,False,sample_5s,13.792853250008193,77,0.0
+6,False,baseline,13.8927785410051,,0.0
+7,False,sample_5s,14.019910999995773,76,0.0
+8,False,baseline,14.029899582994403,,0.0
+9,False,sample_5s,13.770014416004415,77,0.0
+10,False,baseline,13.802247875006287,,0.0
+11,False,sample_5s,13.893904582990217,76,0.0
