@@ -333,7 +333,9 @@ if [[ "${QUEUE_MODE}" == false ]]; then
 else
 	cp "${SCRIPT_DIR}/launchd/com.distill.queue.plist" "${LAUNCHD_DIR}/com.distill.queue.plist"
 	chmod 600 "${LAUNCHD_DIR}/com.distill.queue.plist"
-	launchctl bootstrap "${LAUNCHD_DOMAIN}" "${LAUNCHD_DIR}/com.distill.queue.plist"
+	if ! launchctl print "${LAUNCHD_DOMAIN}/com.distill.queue" >/dev/null 2>&1; then
+		launchctl bootstrap "${LAUNCHD_DOMAIN}" "${LAUNCHD_DIR}/com.distill.queue.plist"
+	fi
 fi
 launchctl bootstrap "${LAUNCHD_DOMAIN}" "${WEB_PLIST}"
 
