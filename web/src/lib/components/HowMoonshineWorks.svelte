@@ -47,12 +47,11 @@
 					<span class="font-mono {on ? 'text-sky-300' : 'text-zinc-500'}">{s.n}.</span>
 					<strong class={on ? 'text-sky-200' : 'text-zinc-200'}>{s.title}</strong>
 					{#if s.id === 'prompt'}
-						You work with an AI that interviews you about your subject, then writes one curated prompt.
+						Answer an AI’s questions to create your training prompt.
 					{:else if s.id === 'questions'}
-						The Teacher model uses that curated prompt to write your training questions.
+						The teacher uses your prompt to write practice questions and answers.
 					{:else}
-						The Trainer distills the "smarts" of the Teacher model down into your small Student model and tests how much
-						the small model improved.
+						Train your small model on those examples, then test its answers.
 					{/if}
 					{#if on}<span class="mt-1 block text-xs font-semibold uppercase tracking-wide text-sky-400">You are here</span>{/if}
 				</a>

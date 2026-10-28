@@ -4,6 +4,8 @@
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { onMount, untrack } from 'svelte';
 	import InterviewChat from '$lib/components/InterviewChat.svelte';
+	import InterviewPrompt from '$lib/components/InterviewPrompt.svelte';
+	import { loadInterviewProgress } from '$lib/interview-progress';
 	import HowMoonshineWorks from '$lib/components/HowMoonshineWorks.svelte';
 	import { formatEstimateRange } from '$lib/format';
 	import {
@@ -34,17 +36,17 @@
 		replaceState(u, {});
 	}
 
-	// ---- PROMPT made in this session
-	const PROMPT_STORE = 'moonshine.prompt.v1';
+	// ---- Finished prompt saved with the local interview
 	let sessionPrompt = $state('');
 	onMount(() => {
-		sessionPrompt = sessionStorage.getItem(PROMPT_STORE) ?? '';
-		if (sessionPrompt) source = 'session';
+		try {
+			sessionPrompt = loadInterviewProgress(data.userName ?? 'you').prompt;
+			if (sessionPrompt) source = 'session';
+		} catch { /* The interview panel reports storage problems. */ }
 	});
 	function onPrompt(p: string) {
 		sessionPrompt = p;
-		source = 'session';
-		sessionStorage.setItem(PROMPT_STORE, p);
+		source = p ? 'session' : 'file';
 	}
 	let copied = $state(false);
 	async function copyPrompt() {
@@ -176,61 +178,48 @@
 
 {#if stage === 'prompt'}
 	<section class="mt-2 space-y-5">
-		<div class="space-y-3 text-sm text-zinc-300">
-			<h2 class="text-lg font-semibold text-zinc-100">This step: Generate Prompt</h2>
-			<p>
-				In this step an AI asks you questions about your subject, your audience, and what a good answer looks like.
-				Then it writes a curated prompt for you.
-			</p>
-			<div class="rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-emerald-100">
-				<strong>The result of this step is a PROMPT, not questions.</strong> A prompt is a set of instructions that tells
-				the Teacher how to write your training questions. You'll upload it in step 2, and the Teacher will turn it into
-				thousands of training examples. Each one looks like
-				<code class="rounded bg-black/30 px-1 font-mono text-xs">{'{"prompt": "...", "completion": "..."}'}</code>.
-			</div>
-			<p>
-				<strong class="text-zinc-100">Choose your path.</strong> Both paths end with the same kind of prompt, so pick
-				whichever you prefer.
-			</p>
+		<div class="space-y-2 text-sm text-zinc-300">
+			<h2 class="text-lg font-semibold text-zinc-100">Step 1: Create your training prompt</h2>
+			<p>An AI interviews you about what your model should do, then writes a prompt to guide its training. Choose either path.</p>
+			<p class="rounded-lg border border-emerald-900 bg-emerald-950/30 px-4 py-3 text-emerald-100">Answer questions → Get your finished prompt → Use it in step 2 to generate training examples.</p>
 		</div>
 
-		<div class="grid gap-5 lg:grid-cols-3">
+		<div class="grid items-start gap-5 lg:grid-cols-3">
 			<div class="card border-sky-900 p-4 lg:col-span-2" id="path-local">
 				<p class="text-xs font-semibold uppercase tracking-widest text-sky-400">Path 1</p>
-				<h3 class="mb-2 text-base font-semibold text-zinc-100">Local (here in Moonshine)</h3>
-				<p class="mb-3 text-sm text-zinc-400">
-					Moonshine's own Teacher AI interviews you right on this page. Nothing leaves the school server. When you're
-					done, download or save the prompt.
-				</p>
-				<InterviewChat teacher={data.teacher} {onPrompt} />
+				<h3 class="mb-2 text-base font-semibold text-zinc-100">Chat here in Moonshine</h3>
+				<ol class="mb-4 list-decimal space-y-1 pl-5 text-sm text-zinc-400">
+					<li>Answer the teacher’s questions in the chat below.</li>
+					<li>Review the finished prompt when it appears below the chat.</li>
+					<li>Click “Use it in step 2” to generate training examples.</li>
+				</ol>
+				<p class="mb-3 text-xs text-zinc-500">The teacher runs on the school server. The interview instructions are already loaded.</p>
+				{#key data.userName}
+					<InterviewChat teacher={data.teacher} ownerName={data.userName ?? 'you'} {onPrompt} />
+				{/key}
 			</div>
-			<div class="card space-y-3 border-violet-900 p-4 text-sm text-zinc-400" id="path-remote">
+			<div class="card space-y-4 border-violet-900 p-4 text-sm text-zinc-400" id="path-remote">
 				<div>
 					<p class="text-xs font-semibold uppercase tracking-widest text-violet-400">Path 2</p>
-					<h3 class="text-base font-semibold text-zinc-100">Remote (your favorite AI)</h3>
+					<h3 class="text-base font-semibold text-zinc-100">Chat in Claude or another AI</h3>
 				</div>
-				<p>
-					Download the interview instructions and paste them into ChatGPT, Claude, Gemini, or another AI. That AI
-					interviews you and writes the prompt. Save its final prompt as a file, then bring it back here for step 2.
-				</p>
-				<div class="flex flex-wrap gap-2">
-					<a class="btn-secondary" href="/api/meta-prompt?format=md" download>Download .md</a>
-					<a class="btn-secondary" href="/api/meta-prompt?format=txt" download>Download .txt</a>
-				</div>
-				<p class="text-xs text-zinc-500">Save the prompt it gives you as a .md or .txt file, then go to step 2.</p>
+				<ol class="list-decimal space-y-2 pl-5">
+					<li>Send the starter prompt below to your AI.</li>
+					<li>Answer its questions until it writes your finished prompt.</li>
+					<li>Save the finished prompt as a .md or .txt file. Upload that file in step 2.</li>
+				</ol>
+				<InterviewPrompt />
+				<p class="text-xs text-zinc-500">Bring back the finished prompt, not the starter prompt or chat transcript.</p>
+				<button type="button" class="btn-secondary" onclick={() => go('questions')}>Upload your prompt in step 2 →</button>
 			</div>
 		</div>
-
-		<p class="text-sm text-zinc-300">
-			Either way, you should leave this step holding one thing: <strong class="text-zinc-100">your prompt file.</strong>
-		</p>
 
 		{#if sessionPrompt}
 			<div class="rounded-lg border-2 border-emerald-700 bg-bg-elevated">
 				<div class="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-900 px-4 py-3">
 					<div>
 						<p class="text-xs font-semibold uppercase tracking-widest text-emerald-400">Your result</p>
-						<h2 class="text-lg font-semibold text-zinc-100">PROMPT</h2>
+						<h2 class="text-lg font-semibold text-zinc-100">Your finished prompt</h2>
 					</div>
 					<div class="flex flex-wrap gap-2">
 						<form method="POST" action="/api/prompt-download">
@@ -258,7 +247,7 @@
 				<legend class="label">Your PROMPT</legend>
 				{#if sessionPrompt}
 					<label class="flex items-center gap-2 text-sm text-zinc-300">
-						<input type="radio" name="source" value="session" bind:group={source} /> Use the PROMPT from this session
+						<input type="radio" name="source" value="session" bind:group={source} /> Use your saved prompt from step 1
 						<span class="text-xs text-zinc-500">({sessionPrompt.length.toLocaleString()} characters)</span>
 					</label>
 				{/if}
