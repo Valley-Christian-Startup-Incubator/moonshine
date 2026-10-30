@@ -110,8 +110,47 @@ def proxy_load(config):
             raise RuntimeError('Proxy did not accept the new configuration')
 
 
+def proxy_handler(config):
+    for route in config['apps']['http']['servers']['moonshine']['routes']:
+        for handler in route.get('handle', []):
+            if 'upstreams' in handler:
+                return handler
+    raise RuntimeError('Moonshine proxy has no upstream handler')
+
+
 def proxy_upstream(config):
-    return config['apps']['http']['servers']['moonshine']['routes'][0]['handle'][0]['upstreams']
+    return proxy_handler(config)['upstreams']
+
+
+def publish_assets(home, old_assets, new_assets):
+    """Serve both versions' hashed assets across forward switches and rollbacks."""
+    root = home / 'deploy/client'
+    target = root / '_app/immutable'
+    def copy_new(source, destination):
+        destination = Path(destination)
+        if not destination.exists():
+            temporary = destination.with_name(destination.name + '.tmp')
+            shutil.copy2(source, temporary)
+            temporary.replace(destination)
+        return str(destination)
+    for source in (old_assets, new_assets):
+        shutil.copytree(source, target, dirs_exist_ok=True, copy_function=copy_new)
+    directory = home / 'deploy'
+    config = read_json(directory / 'proxy.json')
+    routes = config['apps']['http']['servers']['moonshine']['routes']
+    static_route = {
+        'match': [{'path': ['/_app/immutable/*']}],
+        'handle': [
+            {'handler': 'headers', 'response': {'set': {'Cache-Control': ['public, max-age=31536000, immutable']}}},
+            {'handler': 'file_server', 'root': str(root)}
+        ],
+        'terminal': True
+    }
+    if static_route not in routes:
+        routes.insert(0, static_route)
+        # The backend stays unchanged while this route is introduced.
+        proxy_load(config)
+        save_json(directory / 'proxy.json', config)
 
 
 def switch_release(directory, candidate, verify, hold_seconds=10):
@@ -121,8 +160,7 @@ def switch_release(directory, candidate, verify, hold_seconds=10):
     transaction = {'config': previous_config, 'release': previous_release}
     save_json(directory / 'pending-switch.json', transaction)
     next_config = json.loads(json.dumps(previous_config))
-    next_config['apps']['http']['servers']['moonshine']['routes'][0]['handle'][0]['upstreams'] = [
-        {'dial': '127.0.0.1:' + str(candidate['port'])}]
+    proxy_handler(next_config)['upstreams'] = [{'dial': '127.0.0.1:' + str(candidate['port'])}]
     try:
         with PublicProbes(candidate['publicHost']) as probes:
             time.sleep(1)
@@ -235,14 +273,18 @@ def retire_idle_releases(home):
         port = str(service.get('EnvironmentVariables', {}).get('PORT'))
         if port in keep_ports:
             continue
-        connections = subprocess.run(['lsof', '-nP', '-iTCP:' + port, '-sTCP:ESTABLISHED'], capture_output=True)
-        if connections.returncode == 1:  # lsof: no matching sockets
+        if has_no_connections(port):
             stop_candidate(home, service['Label'])
+
+
+def has_no_connections(port):
+    connections = subprocess.run(['lsof', '-nP', '-iTCP:' + str(port), '-sTCP:ESTABLISHED'], capture_output=True)
+    return connections.returncode == 1  # lsof: no matching sockets
 
 
 def start_candidate(home, release, commit, source_service):
     port = available_port()
-    label = 'com.distill.web.release.' + commit[:12]
+    label = 'com.distill.web.release.' + commit[:12] + '-' + release.name.rsplit('-', 1)[-1]
     service = dict(source_service)
     service['EnvironmentVariables'] = dict(source_service['EnvironmentVariables'])
     service.update(Label=label, WorkingDirectory=str(release / 'web'),
@@ -276,9 +318,7 @@ def stop_candidate(home, label):
 
 
 def build_release(home, checkout, commit, source_service, log):
-    release = home / 'releases' / commit
-    if release.exists():
-        raise RuntimeError('Release directory already exists; inspect the previous attempt before retrying')
+    release = home / 'releases' / (commit + '-' + secrets.token_hex(4))
     release.mkdir(parents=True)
     try:
         with tempfile.TemporaryFile() as archive:
@@ -325,8 +365,8 @@ def deploy(home, checkout, automatic=False):
         expected = [{'dial': '127.0.0.1:' + str(active['port'])}]
         if proxy_upstream(config) != expected or proxy_upstream(live_config) != expected:
             raise RuntimeError('Proxy and active release metadata disagree; inspect before deploying')
+        retire_idle_releases(home)
         if git(checkout, 'rev-parse', active['commit']) == commit:
-            retire_idle_releases(home)
             return {'status': 'unchanged', 'commit': commit}
         failed = read_json(directory / 'last-failure.json', {})
         if automatic and failed.get('commit') == commit:
@@ -347,6 +387,7 @@ def deploy(home, checkout, automatic=False):
             # this union of assets at startup, before it receives public traffic.
             old_assets = old_build / 'client/_app/immutable'
             shutil.copytree(old_assets, release / 'web/build/client/_app/immutable', dirs_exist_ok=True)
+            publish_assets(home, old_assets, release / 'web/build/client/_app/immutable')
             asset_samples = [str(p.relative_to(old_assets)) for p in sorted((old_assets / 'entry').glob('*.js'))]
             candidate = start_candidate(home, release, commit, source_service)
             candidate.update(commit=commit, previousPort=active['port'], proxyPort=3004,
@@ -364,8 +405,11 @@ def deploy(home, checkout, automatic=False):
             return {'status': 'deployed', 'commit': commit, 'publicChecks': candidate['publicChecks'], 'models': models}
         except BaseException as error:
             if candidate and not switched and not (directory / 'pending-switch.json').exists():
-                stop_candidate(home, candidate['service'])
-                shutil.rmtree(candidate['release'])
+                # A rejected release may still have public requests finishing.
+                # Leave it alive until idle; shared assets support its open tabs.
+                if has_no_connections(candidate['port']):
+                    stop_candidate(home, candidate['service'])
+                    shutil.rmtree(candidate['release'])
             elif release and not switched and not (directory / 'pending-switch.json').exists():
                 shutil.rmtree(release)
             # Record the exception type only: subprocess errors may contain

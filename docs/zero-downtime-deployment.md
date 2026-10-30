@@ -16,10 +16,12 @@ Users access <https://moonshine.valleychristianai.com>.
 checkout at `/Users/aimac/Developer/mine/moonshine`. The `origin` remote on this
 machine is a fork, so the deployer fetches the canonical URL explicitly.
 
-It creates a release under `~/.distill/releases/<commit>`, installs the locked
+It creates a release under `~/.distill/releases/<commit>-<attempt>`, installs the locked
 dependencies, runs Svelte checks and backend tests, and builds the web bundle.
-It copies the previous release's hashed browser assets before starting the new
-web process, so existing tabs can still load their original code.
+It publishes both versions' hashed browser assets to an append-only directory
+served directly by the proxy before starting the new web process. Existing tabs
+can load their original code after a switch or rollback; existing asset files
+are never rewritten while users are reading them.
 
 Before switching, it verifies login, an authenticated data request, availability
 of every configured student model, an existing job and its JSONL preview when
@@ -29,7 +31,8 @@ checks through the public hostname. Existing requests can finish on the old
 process. The tunnel and job runner are not restarted.
 
 Build failures leave traffic on the current release. Failed public checks restore
-the previous proxy configuration. Recovery information is written before the
+the previous proxy configuration, leaving any candidate requests to finish.
+Recovery information is written before the
 switch so the next run can roll back an interrupted deployment. The active and
 previous web processes are retained; older managed processes are stopped only
 after they have no established TCP connections. Release files and their assets

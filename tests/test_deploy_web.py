@@ -96,7 +96,27 @@ class DeploymentTests(unittest.TestCase):
         with tempfile.TemporaryFile() as log, patch.object(deploy, 'run', side_effect=RuntimeError('build failed')):
             with self.assertRaisesRegex(RuntimeError, 'build failed'):
                 deploy.build_release(home, self.directory, 'failed-commit', source, log)
-        self.assertFalse((home / 'releases/failed-commit').exists())
+        self.assertEqual(list((home / 'releases').iterdir()), [])
+    def test_shared_assets_survive_a_rollback_and_are_never_rewritten(self):
+        home = self.directory / '.distill'
+        (home / 'deploy').mkdir(parents=True)
+        deploy.save_json(home / 'deploy/proxy.json', self.config)
+        old = self.directory / 'old-assets'
+        new = self.directory / 'new-assets'
+        old.mkdir(); new.mkdir()
+        (old / 'old-hash.js').write_text('old tab code')
+        (new / 'new-hash.js').write_text('new tab code')
+        with patch.object(deploy, 'proxy_load') as load:
+            deploy.publish_assets(home, old, new)
+            config = deploy.read_json(home / 'deploy/proxy.json')
+            self.assertEqual(deploy.proxy_upstream(config), deploy.proxy_upstream(self.config))
+            root = home / 'deploy/client/_app/immutable'
+            self.assertEqual((root / 'old-hash.js').read_text(), 'old tab code')
+            self.assertEqual((root / 'new-hash.js').read_text(), 'new tab code')
+            timestamp = (root / 'old-hash.js').stat().st_mtime_ns
+            deploy.publish_assets(home, old, new)
+            self.assertEqual((root / 'old-hash.js').stat().st_mtime_ns, timestamp)
+            self.assertEqual(load.call_count, 1)
     def test_install_cannot_interrupt_running_deployment(self):
         home = self.directory / '.distill'
         (home / 'deploy').mkdir(parents=True)
