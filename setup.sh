@@ -13,6 +13,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISTILL_HOME="${DISTILL_HOME:-$HOME/.distill}"
 VENV_DIR="${VENV_DIR:-$HOME/.distill-venv}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+
+# Existing classroom installations use an isolated build and a graceful proxy
+# switch. Keep the bootstrap path below for first-time installations only.
+if [[ -f "${DISTILL_HOME}/deploy/proxy.json" ]]; then
+	exec /usr/bin/python3 "${SCRIPT_DIR}/scripts/deploy_web.py" \
+		--home "${DISTILL_HOME}" --checkout "${SCRIPT_DIR}" deploy
+fi
+
 DAGU_VERSION="${DAGU_VERSION:-1.17.4}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 PYDANTIC_AI_VERSION="${PYDANTIC_AI_VERSION:-2.35.3}"
