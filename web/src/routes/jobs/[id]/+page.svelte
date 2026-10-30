@@ -3,6 +3,7 @@
 	import { invalidateAll, goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import JobControls from '$lib/components/JobControls.svelte';
+	import JsonlPreview from '$lib/components/JsonlPreview.svelte';
 	import ProgressBar from '$lib/components/ProgressBar.svelte';
 	import RunActivity from '$lib/components/RunActivity.svelte';
 	import LossChart from '$lib/components/LossChart.svelte';
@@ -50,6 +51,8 @@
 	const mainArtifacts = $derived(
 		MAIN_KEYS.map((k) => data.artifacts.find((a) => a.key === k)).filter((a): a is NonNullable<typeof a> => Boolean(a))
 	);
+	let previewKey = $state('questions');
+	const jsonlArtifacts = $derived(data.artifacts.filter((a) => a.kind === 'file' && a.relPath.endsWith('.jsonl')));
 	const advancedArtifacts = $derived(data.artifacts.filter((a) => !MAIN_KEYS.includes(a.key)));
 	const live = $derived(job.status === 'running' || job.status === 'queued' || Boolean(job.pendingAction));
 	const gb = (b: number | null | undefined) => (b ? `${(b / 1e9).toFixed(1)} GB` : '');
@@ -126,6 +129,18 @@
 		Waiting in line{job.queuePosition ? `: #${job.queuePosition}` : ''}.
 		{#if data.queue.blockedByPause}The queue is on hold because another job is paused.{/if}
 	</div>
+{/if}
+
+{#if job.type === 'generate' && job.status === 'completed' && data.artifacts.some((a) => a.key === 'questions')}
+	<section class="mt-5 rounded-lg border border-emerald-900 bg-emerald-950/20 p-4" aria-label="Next step">
+		<h2 class="text-base font-semibold text-emerald-200">Your training examples are ready</h2>
+		<p class="mt-2 text-sm text-zinc-300">Preview a few questions and answers below to check them. Then download the questions file and upload it in step 3 to train your model.</p>
+		<div class="mt-3 flex flex-wrap gap-2">
+			<a class="btn-primary" href="#jsonl-preview" onclick={() => { previewKey = 'questions'; }}>Preview questions</a>
+			<a class="btn-secondary" href="/jobs/{job.id}/download?file=questions" download>Download Questions (.jsonl)</a>
+			<a class="btn-secondary" href="/?stage=train">Go to step 3 →</a>
+		</div>
+	</section>
 {/if}
 
 <RunActivity type={job.type} status={job.status} progress={job.progress} docNames={job.docNames} />
@@ -372,13 +387,20 @@
 	</section>
 {/if}
 
+{#if jsonlArtifacts.length}
+	{#key job.id}
+		<JsonlPreview jobId={job.id} artifacts={jsonlArtifacts} bind:selected={previewKey} />
+	{/key}
+{/if}
+
 {#if data.artifacts.length || (job.type === 'train' && gguf?.state === 'failed' && gguf.error)}
 	<section class="card mt-5 p-5" id="downloads">
-		<h2 class="label">Downloads</h2>
+		<h2 class="label">Files and downloads</h2>
 		{#if mainArtifacts.length}
 			<div class="flex flex-wrap items-center gap-2">
 				{#each mainArtifacts as a (a.key)}
 					<a class={a.key === 'ollama-gguf' ? 'btn-primary' : 'btn-secondary'} href="/jobs/{job.id}/download?file={a.key}" download>{a.label}</a>
+					{#if a.relPath.endsWith('.jsonl')}<a class="text-sm text-zinc-300 underline" href="#jsonl-preview" onclick={() => { previewKey = a.key; }}>Preview {a.label.replace(' (.jsonl)', '').toLowerCase()}</a>{/if}
 				{/each}
 				{#if ggufArtifact && gguf?.bytes}<span class="text-xs text-zinc-500">Ollama .zip: {gb(gguf.bytes)}</span>{/if}
 			</div>
@@ -399,6 +421,7 @@
 					{#each advancedArtifacts as a (a.key)}
 						<li class="flex flex-wrap items-center gap-x-3 gap-y-1">
 							<a class="btn-secondary px-2 py-1 text-xs" href="/jobs/{job.id}/download?file={a.key}" download>{a.label}{a.kind === 'dir' ? ' (.tar.gz)' : ''}</a>
+							{#if a.relPath.endsWith('.jsonl')}<a class="text-sm text-zinc-300 underline" href="#jsonl-preview" onclick={() => { previewKey = a.key; }}>Preview</a>{/if}
 							{#if ADVANCED_INFO[a.key]}<span class="text-xs text-zinc-500">{ADVANCED_INFO[a.key]}</span>{/if}
 						</li>
 					{/each}
